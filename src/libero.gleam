@@ -2300,7 +2300,7 @@ import libero/wire
 " <> combined_imports <> "
 
 /// Handle an incoming RPC call envelope. Returns a tuple of:
-///   - the JSON-encoded response string (to send back to the client)
+///   - the ETF-encoded response binary (to send back to the client)
 ///   - `Option(PanicInfo)`: `Some` if a server function panicked,
 ///     letting the caller log, report, or escalate however they
 ///     prefer. Libero has no logging dependency of its own.
@@ -2310,14 +2310,14 @@ import libero/wire
 /// dropped on bad input.
 pub fn " <> handle_name <> "(
   session " <> outer_session_binding <> ": " <> session.type_rendered <> ",
-  text text: String,
-) -> #(String, Option(PanicInfo)) {
-  case wire.decode_call(text) {
+  data data: BitArray,
+) -> #(BitArray, Option(PanicInfo)) {
+  case wire.decode_call(data) {
     Ok(#(name, args)) -> dispatch(" <> dispatch_call_session <> "name: name, args: args)
-    Error(wire.DecodeError(message: _msg, cause: _cause)) ->
-      // The typed error is bound by field so neither the message nor
-      // the underlying json.DecodeError is silently discarded; the
-      // client only needs to know the envelope was malformed.
+    Error(wire.DecodeError(message: _msg)) ->
+      // The typed error is bound by field so the message is not
+      // silently discarded; the client only needs to know the
+      // envelope was malformed.
       #(wire.encode(Error(MalformedRequest)), None)
   }
 }
@@ -2325,7 +2325,7 @@ pub fn " <> handle_name <> "(
 fn dispatch(
 " <> dispatch_session_param <> "  name name: String,
   args args: List(Dynamic),
-) -> #(String, Option(PanicInfo)) {
+) -> #(BitArray, Option(PanicInfo)) {
   case name, args {
 " <> cases <> "
 
