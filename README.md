@@ -148,6 +148,7 @@ Libero's generator is driven by three flags:
 - **`--ws-url=<url>`** *(required, no default)*. The WebSocket endpoint the generated client will connect to at runtime, baked into `rpc_config.gleam` as a compile-time constant. Libero itself does not connect to this URL; it only writes it into the generated config. Forcing it at the call site means nobody accidentally ships stubs pointing at a dev URL.
 - **`--namespace=<name>`** *(optional, no default)*. When set, drives every path by directory convention and prefixes wire names.
 - **`--client=<path>`** *(optional, defaults to `../client`)*. Path to the client package root. Only needed for non-standard layouts.
+- **`--write-inputs`** *(optional, off by default)*. Write a `.inputs` manifest listing every source file scanned. See "Build integration" below.
 
 All other paths are derived by convention.
 
@@ -176,7 +177,37 @@ gleam run -m libero -- --ws-url=wss://your.host/ws/rpc
 
 Most consumers wrap `gleam run -m libero` in a build script that skips regeneration when no source files have changed. If your build script uses mtime-based staleness checks (e.g. comparing a stamp file against `src/server/**/*.gleam`), make sure to also watch your `@inject` module(s). Changes to inject function signatures affect every generated dispatch case and stub, even if no `@rpc` files changed.
 
-Files your staleness check should cover:
+### Input manifest (`--write-inputs`)
+
+Pass `--write-inputs` and libero will write a `.inputs` file alongside the generated dispatch, listing every source file it scanned (one per line, sorted). Your build script can diff this against a stamp file for reliable staleness checks without maintaining a manual watch list.
+
+```bash
+gleam run -m libero -- --ws-url=wss://your.host/ws/rpc --write-inputs
+# writes src/server/generated/libero/.inputs
+
+gleam run -m libero -- --ws-url=wss://your.host/admin/ws/rpc --namespace=admin --write-inputs
+# writes src/server/generated/libero/admin/.inputs
+```
+
+Example staleness check in a build script:
+
+```bash
+STAMP=".libero_stamp"
+INPUTS="src/server/generated/libero/.inputs"
+if [ -f "$INPUTS" ] && [ -f "$STAMP" ]; then
+  STALE=$(find $(cat "$INPUTS") -newer "$STAMP" 2>/dev/null | head -1)
+  if [ -z "$STALE" ]; then
+    echo "libero: up to date, skipping"
+    exit 0
+  fi
+fi
+gleam run -m libero -- --ws-url=... --write-inputs
+touch "$STAMP"
+```
+
+### Manual watch list
+
+If you prefer not to use `--write-inputs`, ensure your staleness check covers:
 
 - `src/server/<namespace>/**/*.gleam` (or `src/server/**/*.gleam` without a namespace) for `@rpc` functions
 - Any file containing `/// @inject` functions (e.g. `src/server/rpc_inject.gleam`)

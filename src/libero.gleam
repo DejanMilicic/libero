@@ -221,6 +221,11 @@ type Config {
     /// generated FFI .mjs file. Depth depends on where the register
     /// files land inside the consumer client package.
     register_relpath_prefix: String,
+    /// When set, the path where libero writes a manifest listing every
+    /// source file it scanned. Enabled via --write-inputs. Consumers
+    /// can check this file for staleness instead of guessing which
+    /// files to watch.
+    inputs_manifest: option.Option(String),
   )
 }
 
@@ -236,10 +241,12 @@ fn parse_config() -> Config {
         Ok(path) -> path
         Error(Nil) -> "../client"
       }
+      let write_inputs = list.contains(args, "--write-inputs")
       build_config(
         ws_url: ws_url,
         namespace: namespace,
         client_root: client_root,
+        write_inputs: write_inputs,
       )
     }
     Error(Nil) -> {
@@ -268,7 +275,12 @@ fn parse_config() -> Config {
       // erlang:halt/1 external. This line exists only because Gleam's
       // type checker can't see through the external's `-> Nil` return
       // type to know control never reaches here.
-      build_config(ws_url: "", namespace: None, client_root: "../client")
+      build_config(
+        ws_url: "",
+        namespace: None,
+        client_root: "../client",
+        write_inputs: False,
+      )
     }
   }
 }
@@ -282,6 +294,7 @@ fn build_config(
   ws_url ws_url: String,
   namespace namespace: option.Option(String),
   client_root client_root: String,
+  write_inputs write_inputs: Bool,
 ) -> Config {
   // In the final JS bundle, registration files land at:
   //   <bundle_root>/<client_pkg>/client/generated/libero/[<ns>/]rpc_register_ffi.mjs
@@ -331,6 +344,14 @@ fn build_config(
       "../../../../../",
     )
   }
+  let inputs_manifest = case write_inputs {
+    True ->
+      case namespace {
+        None -> Some("src/server/generated/libero/.inputs")
+        Some(ns) -> Some("src/server/generated/libero/" <> ns <> "/.inputs")
+      }
+    False -> None
+  }
   Config(
     ws_url: ws_url,
     namespace: namespace,
@@ -344,6 +365,7 @@ fn build_config(
     register_gleam_output: register_gleam_output,
     register_ffi_output: register_ffi_output,
     register_relpath_prefix: register_relpath_prefix,
+    inputs_manifest: inputs_manifest,
   )
 }
 
@@ -455,6 +477,13 @@ fn run(config: Config) -> Result(Int, List(GenError)) {
       )
       use _ <- result.try(
         write_atoms(config: config, discovered: discovered)
+        |> result.map_error(fn(e) { [e] }),
+      )
+      use _ <- result.try(
+        write_inputs_manifest(
+          source_files: source_files,
+          config: config,
+        )
         |> result.map_error(fn(e) { [e] }),
       )
       Ok(list.length(all_rpcs))
@@ -600,6 +629,33 @@ pub const ws_url: String = \"" <> config.ws_url <> "\"
       Ok(Nil)
     }
     Error(cause) -> Error(CannotWriteFile(path: output, cause: cause))
+  }
+}
+
+// ---------- Input manifest ----------
+
+/// Write a plain-text file listing every source file libero scanned,
+/// one per line, sorted. Consumer build scripts can diff this against
+/// a stamp file for staleness checks. Only written when --write-inputs
+/// is passed.
+fn write_inputs_manifest(
+  source_files source_files: List(String),
+  config config: Config,
+) -> Result(Nil, GenError) {
+  case config.inputs_manifest {
+    None -> Ok(Nil)
+    Some(output) -> {
+      let sorted = list.sort(source_files, string.compare)
+      let content = string.join(sorted, "\n") <> "\n"
+      ensure_parent_dir(path: output)
+      case simplifile.write(output, content) {
+        Ok(_) -> {
+          io.println("  wrote " <> output)
+          Ok(Nil)
+        }
+        Error(cause) -> Error(CannotWriteFile(path: output, cause: cause))
+      }
+    }
   }
 }
 

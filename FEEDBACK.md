@@ -36,7 +36,7 @@ Root cause was #1 (missing `halt(0)` on success). Additionally, `main()` now ins
 
 ### 6. ~~Dependency invalidation is consumer-managed~~ FIXED
 
-Added a "Build integration" section to the README documenting that consumer staleness checks must also watch `@inject` modules, not just `@rpc` files. The inject module's mtime should be included in any stamp-based invalidation logic.
+Added `--write-inputs` flag: when passed, libero writes a `.inputs` manifest listing every source file it scanned (one per line, sorted). Consumer build scripts can diff this against a stamp file for reliable staleness checks. Also documented the manual watch list approach in the README's "Build integration" section.
 
 ## Ideas for future libero capabilities
 
