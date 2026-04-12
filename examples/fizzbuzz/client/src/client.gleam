@@ -1,4 +1,4 @@
-//// FizzBuzz over libero RPC — client entry point.
+//// FizzBuzz over libero RPC. Client entry point.
 
 import client/app
 import lustre

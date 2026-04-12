@@ -1,3 +1,5 @@
+//// SETUP. Write once, leave alone.
+////
 //// FizzBuzz over libero RPC. Server entry point.
 ////
 //// Runs a Mist HTTP + WebSocket server on Mist's default port (4000):
@@ -5,6 +7,12 @@
 ////   GET /             serves the Lustre app's index.html
 ////   GET /static/*     serves the compiled Lustre bundle
 ////   WS  /ws/rpc       upgrades to libero's RPC dispatch
+////
+//// The interesting libero plumbing lives in `websocket.gleam` (which
+//// builds the Session and calls dispatch) and `rpc_inject.gleam`
+//// (which declares the @inject functions). The actual RPC functions
+//// live in `fizzbuzz.gleam`. That's the file you'd edit when adding
+//// behaviour to a real app. Everything else is one-time scaffolding.
 
 import gleam/bytes_tree
 import gleam/erlang/process

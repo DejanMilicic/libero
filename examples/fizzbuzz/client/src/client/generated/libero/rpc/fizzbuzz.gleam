@@ -21,6 +21,17 @@ pub fn crash(
   )
 }
 
+pub fn whoami(
+  on_response on_response: fn(Result(String, RpcError(Never))) -> msg,
+) -> Effect(msg) {
+  rpc.call_by_name(
+    url: rpc_config.ws_url,
+    name: "fizzbuzz.whoami",
+    args: Nil,
+    wrap: on_response,
+  )
+}
+
 pub fn range(
   from from: Int,
   to to: Int,

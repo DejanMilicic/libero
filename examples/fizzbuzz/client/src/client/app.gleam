@@ -1,3 +1,10 @@
+//// DAY-TO-DAY. This is your Lustre app. Calling a libero RPC from
+//// here is just calling the generated stub like any other function;
+//// the response comes back through your normal `update` loop as a
+//// `Result(T, RpcError(E))` message. No fetch wrapper, no JSON
+//// decoder, no route lookup. The whole pipeline is generated from
+//// the server function's signature.
+
 import client/generated/libero/rpc/fizzbuzz as rpc_fizzbuzz
 import gleam/int
 import gleam/list
@@ -19,6 +26,7 @@ pub type Model {
   Model(
     classify: Slot,
     range: Slot,
+    whoami: Slot,
     crash: Slot,
     classify_input: String,
     range_from: String,
@@ -43,10 +51,12 @@ pub type Msg {
 
   ClassifySubmitted
   RangeSubmitted
+  WhoamiSubmitted
   CrashSubmitted
 
   ClassifyResponse(Result(String, RpcError(Never)))
   RangeResponse(Result(List(String), RpcError(String)))
+  WhoamiResponse(Result(String, RpcError(Never)))
   CrashResponse(Result(String, RpcError(Never)))
 }
 
@@ -57,6 +67,7 @@ pub fn init(_flags: Nil) -> #(Model, Effect(Msg)) {
     Model(
       classify: Idle,
       range: Idle,
+      whoami: Idle,
       crash: Idle,
       classify_input: "15",
       range_from: "1",
@@ -105,6 +116,15 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       }
     }
 
+    WhoamiSubmitted -> #(
+      model,
+      // The generated `whoami` stub takes no wire arguments. `client_id`
+      // is injected from the Session on the server, so the client never
+      // sees it. Compare with `classify` and `range` above, which do
+      // pass their args over the wire.
+      rpc_fizzbuzz.whoami(on_response: WhoamiResponse),
+    )
+
     CrashSubmitted -> #(
       model,
       rpc_fizzbuzz.crash(label: model.crash_input, on_response: CrashResponse),
@@ -134,6 +154,16 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       effect.none(),
     )
 
+    // --- Whoami (bare return, RpcError(Never); injected client_id) ---
+    WhoamiResponse(Ok(message)) -> #(
+      Model(..model, whoami: Showing(message)),
+      effect.none(),
+    )
+    WhoamiResponse(Error(e)) -> #(
+      Model(..model, whoami: Errored(framework_message_never(e))),
+      effect.none(),
+    )
+
     // --- Crash (bare return, RpcError(Never); InternalError on panic) ---
     CrashResponse(Ok(label)) -> #(
       Model(..model, crash: Showing(label)),
@@ -151,7 +181,7 @@ fn framework_message_never(e: RpcError(Never)) -> String {
     MalformedRequest -> "malformed request"
     UnknownFunction(name) -> "unknown function: " <> name
     InternalError(trace_id) ->
-      "server panicked — trace " <> trace_id <> " (see server logs)"
+      "server panicked (trace " <> trace_id <> ", see server logs)"
     AppError(_) -> "impossible"
   }
 }
@@ -162,7 +192,7 @@ fn framework_message_app(e: RpcError(String)) -> String {
     MalformedRequest -> "malformed request"
     UnknownFunction(name) -> "unknown function: " <> name
     InternalError(trace_id) ->
-      "server panicked — trace " <> trace_id <> " (see server logs)"
+      "server panicked (trace " <> trace_id <> ", see server logs)"
   }
 }
 
@@ -181,12 +211,13 @@ pub fn view(model: Model) -> Element(Msg) {
     html.h1([], [html.text("Libero · FizzBuzz")]),
     html.p([attribute.class("intro")], [
       html.text(
-        "Three RPC calls over libero — each demonstrates a different "
+        "Four RPC calls over libero. Each demonstrates a different "
         <> "corner of the typed wire contract.",
       ),
     ]),
     view_classify(model),
     view_range(model),
+    view_whoami(model),
     view_crash(model),
   ])
 }
@@ -220,7 +251,7 @@ fn view_range(model: Model) -> Element(Msg) {
     html.h2([], [html.text("range(from, to)")]),
     html.p([attribute.class("hint")], [
       html.text(
-        "Wrapped return — Result(List(String), RpcError(String)). Try from=10, "
+        "Wrapped return: Result(List(String), RpcError(String)). Try from=10, "
         <> "to=1 to see the AppError branch fire.",
       ),
     ]),
@@ -246,6 +277,24 @@ fn view_range(model: Model) -> Element(Msg) {
       html.button([attribute.type_("submit")], [html.text("Generate range")]),
     ]),
     view_slot(model.range),
+  ])
+}
+
+fn view_whoami(model: Model) -> Element(Msg) {
+  html.section([], [
+    html.h2([], [html.text("whoami()")]),
+    html.p([attribute.class("hint")], [
+      html.text(
+        "Bare String return with an injected `client_id` parameter. The "
+        <> "client stub takes no arguments; the server pulls client_id "
+        <> "out of the per-connection Session via a `/// @inject` "
+        <> "function. Refresh the page to get a new client id.",
+      ),
+    ]),
+    html.form([event.on_submit(fn(_) { WhoamiSubmitted })], [
+      html.button([attribute.type_("submit")], [html.text("Who am I?")]),
+    ]),
+    view_slot(model.whoami),
   ])
 }
 
@@ -278,7 +327,7 @@ fn view_crash(model: Model) -> Element(Msg) {
 
 fn view_slot(slot: Slot) -> Element(Msg) {
   case slot {
-    Idle -> html.div([attribute.class("slot idle")], [html.text("—")])
+    Idle -> html.div([attribute.class("slot idle")], [html.text("…")])
     Showing(value) ->
       html.div([attribute.class("slot ok")], [html.text(value)])
     Errored(message) ->

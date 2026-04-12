@@ -12,6 +12,8 @@ import libero/error.{
 import libero/trace
 import libero/wire
 import server/fizzbuzz
+import server/rpc_inject
+import server/session.{type Session}
 
 /// Handle an incoming RPC call envelope. Returns a tuple of:
 ///   - the JSON-encoded response string (to send back to the client)
@@ -23,11 +25,11 @@ import server/fizzbuzz
 /// as typed error envelopes. The WebSocket connection is never
 /// dropped on bad input.
 pub fn handle(
-  session _session: Nil,
+  session session: Session,
   text text: String,
 ) -> #(String, Option(PanicInfo)) {
   case wire.decode_call(text) {
-    Ok(#(name, args)) -> dispatch(name: name, args: args)
+    Ok(#(name, args)) -> dispatch(session: session, name: name, args: args)
     Error(wire.DecodeError(message: _msg, cause: _cause)) ->
       // The typed error is bound by field so neither the message nor
       // the underlying json.DecodeError is silently discarded; the
@@ -37,6 +39,7 @@ pub fn handle(
 }
 
 fn dispatch(
+  session session: Session,
   name name: String,
   args args: List(Dynamic),
 ) -> #(String, Option(PanicInfo)) {
@@ -53,6 +56,24 @@ fn dispatch(
             Some(PanicInfo(
               trace_id: trace_id,
               fn_name: "fizzbuzz.crash",
+              reason: reason,
+            )),
+          )
+        }
+      }
+
+    "fizzbuzz.whoami", [] ->
+      case trace.try_call(fn() {
+        fizzbuzz.whoami(client_id: rpc_inject.client_id(session))
+      }) {
+        Ok(value) -> #(wire.encode(Ok(value)), None)
+        Error(reason) -> {
+          let trace_id = trace.new_trace_id()
+          #(
+            wire.encode(Error(InternalError(trace_id: trace_id))),
+            Some(PanicInfo(
+              trace_id: trace_id,
+              fn_name: "fizzbuzz.whoami",
               reason: reason,
             )),
           )

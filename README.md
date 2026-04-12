@@ -66,9 +66,11 @@ gleam add libero
 
 And the same in your client package. Libero is cross-target (Erlang + JavaScript), so server and client both depend on it.
 
-## Wiring it up
+## Initial setup
 
 The two snippets above are the day-to-day surface of libero. Everything in this section is one-time setup: shared state injection, the generated dispatch files, and the WebSocket handler that connects them.
+
+> **Skip to a working example.** The [`examples/fizzbuzz/`](./examples/fizzbuzz/) directory is a complete, runnable libero app with four RPC functions, a Session, an `@inject` function, and a Lustre client. Every file is annotated with whether it's `SETUP` (write once) or `DAY-TO-DAY` (where you add features), so you can copy it as a starting point and replace the fizzbuzz logic with your own. The walkthrough below covers the same pieces in prose.
 
 ### The inject function
 
@@ -143,9 +145,9 @@ pub fn handle_message(state, message, conn) {
 
 Libero's generator is driven by three flags:
 
-- **`--ws-url=<url>`** — *required*, no default. WebSocket URL baked into the generated `rpc_config.gleam`. Forcing it at the call site means nobody accidentally ships stubs pointing at a dev URL.
-- **`--namespace=<name>`** — optional, no default. When set, drives every path by directory convention and prefixes wire names.
-- **`--client=<path>`** — optional, defaults to `../client`. Path to the client package root. Only needed for non-standard layouts.
+- **`--ws-url=<url>`** *(required, no default)*. WebSocket URL baked into the generated `rpc_config.gleam`. Forcing it at the call site means nobody accidentally ships stubs pointing at a dev URL.
+- **`--namespace=<name>`** *(optional, no default)*. When set, drives every path by directory convention and prefixes wire names.
+- **`--client=<path>`** *(optional, defaults to `../client`)*. Path to the client package root. Only needed for non-standard layouts.
 
 All other paths are derived by convention.
 
@@ -179,7 +181,7 @@ gleam run -m libero -- --ws-url=wss://your.host/admin/ws/rpc --namespace=admin
 gleam run -m libero -- --ws-url=wss://your.host/public/ws/rpc --namespace=public
 ```
 
-Each namespace scans `src/server/<ns>/**` recursively and gets its own `/// @inject` functions, `Session` type, and `handle_<ns>` entry point — so admin can carry `User + DB` while public carries `CartCookie`. Wire names are prefixed with the namespace, so `admin.items.save` is distinct from `public.items.save` even if the function names collide. Your server router mounts one WebSocket endpoint per namespace and calls the matching dispatch.
+Each namespace scans `src/server/<ns>/**` recursively and gets its own `/// @inject` functions, `Session` type, and `handle_<ns>` entry point, so admin can carry `User + DB` while public carries `CartCookie`. Wire names are prefixed with the namespace, so `admin.items.save` is distinct from `public.items.save` even if the function names collide. Your server router mounts one WebSocket endpoint per namespace and calls the matching dispatch.
 
 ## Error envelope
 

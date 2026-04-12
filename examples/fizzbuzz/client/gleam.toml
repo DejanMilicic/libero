@@ -22,11 +22,11 @@ unused_exports = "off"
 
 [tools.glinter.ignore]
 # Lustre's init / update / view are runtime callbacks with fixed
-# positional signatures — adding labels doesn't help the Lustre
+# positional signatures, so adding labels doesn't help the Lustre
 # runtime, which calls them with positional args. `int.parse`
 # returning Error(_) is intentionally dropped; we only care that
 # parsing failed, not why. The multi-line hint strings in view_*
-# functions are broken across lines with <> for readability —
+# functions are broken across lines with <> for readability;
 # consolidating would hurt diff-ability.
 "src/client/app.gleam" = [
   "label_possible",

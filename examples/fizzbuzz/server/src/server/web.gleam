@@ -1,3 +1,9 @@
+//// SETUP. Write once, leave alone.
+////
+//// Plain HTTP file serving for the SPA bundle. Nothing libero-specific
+//// here. This would look the same in any mist app that serves a Lustre
+//// frontend.
+
 import gleam/bytes_tree
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
