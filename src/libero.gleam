@@ -40,6 +40,7 @@ import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/io
+import libero/levenshtein_helper
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -2069,19 +2070,25 @@ fn classify_labelled_parameter(
     None -> {
       let #(rendered, new_imports) = render_type(t: type_, resolver: resolver)
       let merged_imports = merge_imports(a: imports_so_far, b: new_imports)
-      // Check if the type matches an inject fn's return type but the
-      // label doesn't match. This catches typos like `tzdb` vs `tz_db`.
+      // Check if the type matches an inject fn's return type AND the
+      // label is similar to the inject's name (edit distance ≤ 2).
+      // Pure type collisions with dissimilar labels (e.g. `key: String`
+      // vs inject `lang: String`) are almost always false positives.
       let errors = case dict.get(inject_types, rendered) |> option.from_result {
         Some(inject_name) ->
-          list.append(errors_so_far, [
-            LikelyInjectTypo(
-              path: path,
-              fn_name: fn_name,
-              label: label,
-              type_: rendered,
-              inject_name: inject_name,
-            ),
-          ])
+          case levenshtein_helper.distance(label, inject_name) <= 2 {
+            True ->
+              list.append(errors_so_far, [
+                LikelyInjectTypo(
+                  path: path,
+                  fn_name: fn_name,
+                  label: label,
+                  type_: rendered,
+                  inject_name: inject_name,
+                ),
+              ])
+            False -> errors_so_far
+          }
         None -> errors_so_far
       }
       #(
