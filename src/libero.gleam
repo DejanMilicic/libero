@@ -198,12 +198,21 @@ type GenError {
 
 // ---------- CLI configuration ----------
 
+/// How the generated client resolves its WebSocket URL.
+type WsMode {
+  /// Hardcoded full URL (from --ws-url). Single-host deployments.
+  WsFullUrl(url: String)
+  /// Path-only, resolved at runtime from window.location (from --ws-path).
+  /// Multi-tenant deployments where multiple subdomains share one bundle.
+  WsPathOnly(path: String)
+}
+
 /// Everything libero needs from its invocation args, normalized.
 /// Paths are derived from --namespace and --client with single-SPA
 /// defaults when those flags are absent.
 type Config {
   Config(
-    ws_url: String,
+    ws_mode: WsMode,
     namespace: option.Option(String),
     client_root: String,
     scan_root: String,
@@ -232,58 +241,62 @@ type Config {
 
 fn parse_config() -> Config {
   let args = argv.load().arguments
-  case find_flag(args: args, name: "--ws-url") {
-    Ok(ws_url) -> {
-      let namespace = case find_flag(args: args, name: "--namespace") {
-        Ok(ns) -> Some(ns)
-        Error(Nil) -> None
-      }
-      let client_root = case find_flag(args: args, name: "--client") {
-        Ok(path) -> path
-        Error(Nil) -> "../client"
-      }
-      let write_inputs = list.contains(args, "--write-inputs")
-      build_config(
-        ws_url: ws_url,
-        namespace: namespace,
-        client_root: client_root,
-        write_inputs: write_inputs,
-      )
-    }
-    Error(Nil) -> {
-      io.println_error("error: --ws-url is required")
-      io.println_error("")
+  let ws_mode = case
+    find_flag(args: args, name: "--ws-url"),
+    find_flag(args: args, name: "--ws-path")
+  {
+    Ok(url), Error(Nil) -> WsFullUrl(url: url)
+    Error(Nil), Ok(path) -> WsPathOnly(path: path)
+    Ok(_), Ok(_) -> {
+      io.println_error("error: --ws-url and --ws-path are mutually exclusive")
       io.println_error(
-        "  The generated client connects to your server over WebSocket at this",
+        "  Use --ws-url for single-host deployments (hardcoded URL),",
       )
       io.println_error(
-        "  URL. Libero bakes it into the generated rpc_config.gleam as a",
-      )
-      io.println_error(
-        "  compile-time constant. There is no default.",
-      )
-      io.println_error("")
-      io.println_error(
-        "  Pass --ws-url=wss://<host>/ws/rpc for your environment.",
-      )
-      io.println_error("")
-      io.println_error("  Example:")
-      io.println_error(
-        "    gleam run -m libero -- --ws-url=wss://example.com/admin/ws/rpc --namespace=admin",
+        "  or --ws-path for multi-tenant deployments (resolved at runtime).",
       )
       let _halt = halt(1)
-      // Unreachable: halt/1 terminates the process via Erlang's
-      // erlang:halt/1 external. This line exists only because Gleam's
-      // type checker can't see through the external's `-> Nil` return
-      // type to know control never reaches here.
-      build_config(
-        ws_url: "",
-        namespace: None,
-        client_root: "../client",
-        write_inputs: False,
+      WsFullUrl(url: "")
+    }
+    Error(Nil), Error(Nil) -> {
+      io.println_error("error: --ws-url or --ws-path is required")
+      io.println_error("")
+      io.println_error(
+        "  --ws-url=<url>   Hardcoded WebSocket URL for single-host deployments.",
       )
+      io.println_error(
+        "  --ws-path=<path>  Path-only, resolved at runtime from the browser's",
+      )
+      io.println_error(
+        "                    location. Use for multi-tenant subdomain deployments.",
+      )
+      io.println_error("")
+      io.println_error("  Examples:")
+      io.println_error(
+        "    gleam run -m libero -- --ws-url=wss://example.com/ws/rpc",
+      )
+      io.println_error(
+        "    gleam run -m libero -- --ws-path=/ws/admin --namespace=admin",
+      )
+      let _halt = halt(1)
+      WsFullUrl(url: "")
     }
   }
+  let namespace = case find_flag(args: args, name: "--namespace") {
+    Ok(ns) -> Some(ns)
+    Error(Nil) -> None
+  }
+  let client_root = case find_flag(args: args, name: "--client") {
+    Ok(path) -> path
+    Error(Nil) -> "../client"
+  }
+  let write_inputs = list.contains(args, "--write-inputs")
+  build_config(
+    ws_mode: ws_mode,
+    namespace: namespace,
+    client_root: client_root,
+    write_inputs: write_inputs,
+  )
 }
 
 /// Derive all paths from --namespace and --client. When namespace is
@@ -292,7 +305,7 @@ fn parse_config() -> Config {
 /// deeper under generated/libero/<namespace>/ to keep multi-SPA output
 /// physically isolated.
 fn build_config(
-  ws_url ws_url: String,
+  ws_mode ws_mode: WsMode,
   namespace namespace: option.Option(String),
   client_root client_root: String,
   write_inputs write_inputs: Bool,
@@ -354,7 +367,7 @@ fn build_config(
     False -> None
   }
   Config(
-    ws_url: ws_url,
+    ws_mode: ws_mode,
     namespace: namespace,
     client_root: client_root,
     scan_root: scan_root,
@@ -613,21 +626,69 @@ fn trap_signals() -> Nil
 // ---------- Config file ----------
 
 fn write_config(config config: Config) -> Result(Nil, GenError) {
-  let content =
-    "//// Code generated by libero. DO NOT EDIT.
+  let content = case config.ws_mode {
+    WsFullUrl(url:) ->
+      "//// Code generated by libero. DO NOT EDIT.
 ////
 //// WebSocket endpoint the client connects to at runtime.
 //// Set via --ws-url at generation time. Rerun bin/dev to regenerate
 //// if the URL changes.
 
-pub const ws_url: String = \"" <> config.ws_url <> "\"
+pub fn ws_url() -> String {
+  \"" <> url <> "\"
+}
 "
+    WsPathOnly(path:) ->
+      "//// Code generated by libero. DO NOT EDIT.
+////
+//// WebSocket endpoint resolved at runtime from the browser's location.
+//// Set via --ws-path at generation time. The scheme (ws/wss) and host
+//// are inferred from window.location so one compiled bundle works
+//// across all subdomains.
+
+pub fn ws_url() -> String {
+  resolve_ws_url(\"" <> path <> "\")
+}
+
+@external(javascript, \"./rpc_config_ffi.mjs\", \"resolveWsUrl\")
+fn resolve_ws_url(_path: String) -> String {
+  panic as \"resolve_ws_url requires a browser environment (window.location)\"
+}
+"
+  }
   let output = config.config_output
   ensure_parent_dir(path: output)
   case simplifile.write(output, content) {
     Ok(_) -> {
       io.println("  wrote " <> output)
-      Ok(Nil)
+      // Write the FFI resolver when using --ws-path
+      case config.ws_mode {
+        WsPathOnly(..) -> {
+          let ffi_path =
+            string.replace(output, ".gleam", "_ffi.mjs")
+          let ffi_content =
+            "// Code generated by libero. DO NOT EDIT.
+//
+// Resolves a WebSocket URL from the browser's current location + path.
+// Used by the generated rpc_config.gleam when --ws-path is active.
+
+export function resolveWsUrl(path) {
+  const protocol = globalThis.location?.protocol === \"https:\" ? \"wss:\" : \"ws:\";
+  const host = globalThis.location?.host ?? \"localhost\";
+  return protocol + \"//\" + host + path;
+}
+"
+          case simplifile.write(ffi_path, ffi_content) {
+            Ok(_) -> {
+              io.println("  wrote " <> ffi_path)
+              Ok(Nil)
+            }
+            Error(cause) ->
+              Error(CannotWriteFile(path: ffi_path, cause: cause))
+          }
+        }
+        WsFullUrl(..) -> Ok(Nil)
+      }
     }
     Error(cause) -> Error(CannotWriteFile(path: output, cause: cause))
   }
@@ -2438,7 +2499,7 @@ fn render_stub_fn(rpc: Rpc) -> String {
   <> "  on_response on_response: fn("
   <> response_type
   <> ") -> msg,\n) -> Effect(msg) {\n"
-  <> "  rpc.call_by_name(\n    url: rpc_config.ws_url,\n    name: \""
+  <> "  rpc.call_by_name(\n    url: rpc_config.ws_url(),\n    name: \""
   <> rpc.wire_name
   <> "\",\n    args: "
   <> args_tuple

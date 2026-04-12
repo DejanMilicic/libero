@@ -42,17 +42,9 @@ Added `--write-inputs` flag: when passed, libero writes a `.inputs` manifest lis
 
 The type-only check from issue #3 now also requires the label to be within Levenshtein distance 2 of the inject function's name. This catches real typos (`tzdb`/`tz_db` = distance 1) while ignoring unrelated labels that happen to share a common type (`key`/`lang` = distance 3+).
 
-### 8. `--ws-url` bakes a subdomain into the compiled client (BLOCKING for multi-tenant consumers)
+### 8. ~~`--ws-url` bakes a subdomain into the compiled client~~ FIXED
 
-**Symptom:** Libero takes `--ws-url=wss://demo.curling.dev/ws/admin` at generation time and writes it as a compile-time constant into `rpc_config.gleam`. Consumers that run multi-tenant subdomain-based deployments (e.g. `foo.curling.io`, `bar.curling.io` sharing one compiled admin bundle) cannot use this: every compiled client is locked to one specific subdomain.
-
-**Impact:** The Curling IO v3 consumer is multi-tenant — 200+ orgs each have their own subdomain. One compiled JS bundle is served to all of them. Right now the bundle hardcodes `wss://demo.curling.dev/ws/admin`, which means every org except `demo` would try to connect to the wrong host. This is a production blocker, not a dev annoyance.
-
-**Suggestion:** Libero should accept a **path-relative** URL (e.g. `--ws-path=/ws/admin`) and have the generated client runtime build the full URL at connect time via `wss://${window.location.host}${path}`. The scheme (ws vs wss) can also be inferred from `window.location.protocol` (http → ws, https → wss). Keep `--ws-url` as a compat alias but document it as "for single-host deployments only; use --ws-path for multi-tenant."
-
-Alternatively/additionally: generate the client with a runtime setter so consumers can configure the URL from an application-provided source (e.g. a JSON blob in the HTML shell, similar to how the Curling v3 admin shell already ships session data).
-
-**Workaround:** the consumer can rewrite the generated `rpc_config.gleam` after generation, or patch the runtime `rpc_ffi.mjs` to ignore the baked URL. Both are hacks.
+Added `--ws-path` flag as an alternative to `--ws-url`. When used, the generated `rpc_config.gleam` resolves the full WebSocket URL at runtime from `window.location` (scheme + host + path), so one compiled bundle works across all subdomains. Breaking change: `rpc_config.ws_url` is now a function (`rpc_config.ws_url()`) instead of a constant, for both modes.
 
 ### 9. ~~Walker hangs silently~~ FIXED — was exponential blowup from eager bool.guard evaluation
 

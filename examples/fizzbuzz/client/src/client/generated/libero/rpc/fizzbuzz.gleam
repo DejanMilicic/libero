@@ -14,7 +14,7 @@ pub fn crash(
   on_response on_response: fn(Result(String, RpcError(Never))) -> msg,
 ) -> Effect(msg) {
   rpc.call_by_name(
-    url: rpc_config.ws_url,
+    url: rpc_config.ws_url(),
     name: "fizzbuzz.crash",
     args: label,
     wrap: on_response,
@@ -25,7 +25,7 @@ pub fn whoami(
   on_response on_response: fn(Result(String, RpcError(Never))) -> msg,
 ) -> Effect(msg) {
   rpc.call_by_name(
-    url: rpc_config.ws_url,
+    url: rpc_config.ws_url(),
     name: "fizzbuzz.whoami",
     args: Nil,
     wrap: on_response,
@@ -38,7 +38,7 @@ pub fn range(
   on_response on_response: fn(Result(List(String), RpcError(String))) -> msg,
 ) -> Effect(msg) {
   rpc.call_by_name(
-    url: rpc_config.ws_url,
+    url: rpc_config.ws_url(),
     name: "fizzbuzz.range",
     args: #(from, to),
     wrap: on_response,
@@ -50,7 +50,7 @@ pub fn classify(
   on_response on_response: fn(Result(String, RpcError(Never))) -> msg,
 ) -> Effect(msg) {
   rpc.call_by_name(
-    url: rpc_config.ws_url,
+    url: rpc_config.ws_url(),
     name: "fizzbuzz.classify",
     args: n,
     wrap: on_response,
