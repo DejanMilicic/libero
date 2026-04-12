@@ -38,6 +38,24 @@ Root cause was #1 (missing `halt(0)` on success). Additionally, `main()` now ins
 
 Added `--write-inputs` flag: when passed, libero writes a `.inputs` manifest listing every source file it scanned (one per line, sorted). Consumer build scripts can diff this against a stamp file for reliable staleness checks. Also documented the manual watch list approach in the README's "Build integration" section.
 
+### 7. `LikelyInjectTypo` check is too aggressive (HIGH)
+
+**Symptom:** After the v2.0.0 fix for issue #3, libero now errors on any wire parameter whose type matches an inject function's return type — regardless of how similar the parameter label is to the inject's name. In practice this means any `String` wire parameter on any `@rpc` function is flagged as a potential typo of `lang` (which is the canonical String inject consumers tend to have).
+
+**Example:**
+```
+error: src/server/admin/custom_questions.gleam: @rpc function `delete` has parameter `key` of type `String` which matches @inject function `lang` but the label doesn't match
+  did you mean `lang lang: String`?
+```
+
+`key` is a legitimate wire parameter (a custom question's slug key); it's clearly not a typo of `lang`. But the check at `libero.gleam:2074` only does a type lookup in `inject_types` — it doesn't check whether the label is actually similar to the inject's name.
+
+**Impact:** Blocks generation for any @rpc that takes a String wire parameter (IDs, slugs, paths, names, etc.) when the consumer has a `lang: String` inject. The Curling v3 consumer has this pattern in `custom_questions.gleam` (wire param `key: String`), and likely will hit it again as more sections use string identifiers.
+
+**Suggestion:** Only emit `LikelyInjectTypo` when the label is within a small edit distance of an inject function's name (e.g. Levenshtein distance ≤ 2, or shared prefix of 3+ chars). Pure type collisions with no label similarity are almost always false positives for common types like `String` and `Int`. The original issue #3 was about `tzdb` vs `tz_db` — that's an edit distance of 1 with shared prefix. That's the signal to key off.
+
+**Workaround:** consumers can wrap the parameter in a dedicated shared type (e.g. `pub type QuestionKey { QuestionKey(String) }`), which makes the rendered type no longer match any inject's return type. Ugly but works.
+
 ## Ideas for future libero capabilities
 
 ### Structured deprecation support
