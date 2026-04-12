@@ -1,12 +1,10 @@
 # Libero
 
-Typed RPC for Gleam + Lustre SPAs, generated from `/// @rpc` annotations. No REST routes, no JSON codecs, no hand-written dispatch tables.
-
 Libero is the defensive specialist in volleyball, who handles passes and digs so the rest of the team can focus on hits. This library handles the wire plumbing (serialization, dispatch, error envelopes, panic recovery) so your app can focus on its domain logic.
 
-## What it does
+Wiring a Gleam server to a Lustre SPA usually means, for every interaction: define a REST route, write a JSON encoder for the request, write a JSON decoder for the response, write a `fetch` wrapper on the client, and keep the type definitions on both sides in sync by hand. Every new endpoint is the same boilerplate, and every mistake (typo, missing field, drifted shape) waits for runtime to bite.
 
-Mark a `pub fn` with `/// @rpc` and libero generates a dispatch case on the server side and a typed stub on the client side. Both talk to each other over WebSocket.
+Libero replaces the whole loop. You write a normal server function, annotate it with `/// @rpc`, and call it from the client as if it were a local function. Routes, encoders, decoders, dispatch, and error envelopes are all generated from the function's signature, and the compiler catches drift between the two sides at build time.
 
 ```gleam
 // server/src/server/fizzbuzz.gleam
@@ -35,9 +33,7 @@ Classify ->
   )
 ```
 
-The client stub's signature (`n: Int`, `on_response: fn(Result(String, RpcError(Never))) -> msg`) is generated at build time from the server function's signature. Types go in, types come out, and the compiler catches every mismatch.
-
-Every response is `Result(T, RpcError(E))`, where `RpcError` covers domain errors, malformed traffic, unknown functions, and server panics. A panic becomes a typed `InternalError(trace_id)` for the client and a `PanicInfo` bubble for your handler to log — the WebSocket connection is never dropped.
+The client stub's signature (`n: Int`, `on_response: fn(Result(String, RpcError(Never))) -> msg`) is generated at build time from the server function's signature, and server and client talk to each other over WebSocket.
 
 The wire format is reflective. Custom types, tuples, Options, Results, and primitives all serialize and rebuild automatically without `Decoder`s or `encode` functions. The on-wire shape is `{"fn": "...", "args": [...]}` for the call and `{"@": "ok", "v": [...]}` for the response: simple enough to `tcpdump` and read.
 
