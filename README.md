@@ -6,7 +6,55 @@ Wiring a Gleam server to a Lustre SPA usually means, for every interaction: defi
 
 Libero replaces the whole loop. You write a normal server function, annotate it with `/// @rpc`, and call it from the client as if it were a local function. Routes, encoders, decoders, dispatch, and error envelopes are all generated from the function's signature, and the compiler catches drift between the two sides at build time. Server and client talk to each other over WebSocket.
 
-The wire format is reflective. Custom types, tuples, Options, Results, and primitives all serialize and rebuild automatically without `Decoder`s or `encode` functions. The on-wire shape is `{"fn": "...", "args": [...]}` for the call and `{"@": "ok", "v": [...]}` for the response: simple enough to `tcpdump` and read.
+## Quick tour
+
+### The server function
+
+```gleam
+// server/src/server/records.gleam
+
+import shared/record.{type Record, type SaveError}
+
+/// @rpc
+pub fn save(
+  name name: String,
+  email email: String,
+) -> Result(Record, SaveError) {
+  // ... persist the record, return a Record or a SaveError ...
+}
+```
+
+Labelled parameters are wire-exposed, so the client stub takes them. The return type can be a bare `T` or `Result(T, E)`, and both shapes are handled.
+
+### The client call
+
+```gleam
+import client/generated/libero/rpc/records as rpc_records
+import shared/record.{type Record, type SaveError}
+import libero/error.{type RpcError, AppError, InternalError, MalformedRequest, UnknownFunction}
+
+pub type Msg {
+  RecordSaved(Result(Record, RpcError(SaveError)))
+  // ...
+}
+
+// In your update:
+FormSubmitted -> #(
+  Model(..model, saving: True),
+  rpc_records.save(
+    name: model.form.name,
+    email: model.form.email,
+    on_response: RecordSaved,
+  ),
+)
+
+RecordSaved(Ok(record)) -> { /* merge into list, clear form */ }
+RecordSaved(Error(AppError(DuplicateEmail))) -> { /* show form error */ }
+RecordSaved(Error(InternalError(trace_id))) -> { /* show generic error */ }
+RecordSaved(Error(_)) -> { /* framework fallthrough */ }
+```
+
+The compiler statically checks that you handle every `RpcError` variant.
 
 ## Install
 
@@ -18,29 +66,13 @@ gleam add libero
 
 And the same in your client package. Libero is cross-target (Erlang + JavaScript), so server and client both depend on it.
 
-## Quick tour
+## Wiring it up
 
-### The server function
-
-```gleam
-// server/src/server/records.gleam
-
-import shared/record.{type Record, type SaveError}
-import sqlight
-
-/// @rpc
-pub fn save(
-  conn conn: sqlight.Connection,
-  name name: String,
-  email email: String,
-) -> Result(Record, SaveError) {
-  // ... run some sql, return a Record or a SaveError ...
-}
-```
-
-The first labelled parameter (`conn`) matches a `/// @inject` function declared elsewhere. Libero plumbs the session-derived value in automatically at dispatch time. Subsequent labelled parameters (`name`, `email`) are wire-exposed, so the client stub takes them. The return type can be a bare `T` or `Result(T, E)`, and both shapes are handled.
+The two snippets above are the day-to-day surface of libero. Everything in this section is one-time setup: shared state injection, the generated dispatch files, and the WebSocket handler that connects them.
 
 ### The inject function
+
+If your RPC functions need shared state (a database connection, an authenticated user, a tenant ID), declare a `/// @inject` function for each value.
 
 ```gleam
 // server/src/server/rpc_inject.gleam
@@ -54,9 +86,22 @@ pub fn conn(session: Session) -> sqlight.Connection {
 }
 ```
 
-Every `@rpc` function's first labelled parameter whose label matches an `@inject` function's name gets the inject fn's result injected at dispatch time. Inject fns take your `Session` type as input. The `Session` type is inferred from the first inject fn found, and all inject fns in a namespace must share the same `Session` type.
+Then add a matching labelled parameter to any `@rpc` function that needs it:
 
-If you have zero inject fns, libero uses `Session = Nil`. Your WebSocket handler passes `Nil` to the dispatch entry point.
+```gleam
+/// @rpc
+pub fn save(
+  conn conn: sqlight.Connection,
+  name name: String,
+  email email: String,
+) -> Result(Record, SaveError) {
+  // ... use conn to persist ...
+}
+```
+
+The first labelled parameter whose label matches an `@inject` function's name gets injected at dispatch time. Inject fns take your `Session` type as input. The `Session` type is inferred from the first inject fn found, and all inject fns in a namespace must share the same `Session` type.
+
+If you have zero inject fns, libero uses `Session = Nil` and your WebSocket handler passes `Nil` to the dispatch entry point.
 
 ### The generated dispatch
 
@@ -93,36 +138,6 @@ pub fn handle_message(state, message, conn) {
 ```
 
 `handle` returns both the wire response and an `Option(PanicInfo)`. If a server fn panicked, `PanicInfo` carries the trace id, function name, and stringified reason. Route that to `wisp.log_error`, Sentry, Datadog, or wherever you want. Libero itself has no logging dependency.
-
-### The client call
-
-```gleam
-import client/generated/libero/rpc/records as rpc_records
-import shared/record.{type Record, type SaveError}
-import libero/error.{type RpcError, AppError, InternalError, MalformedRequest, UnknownFunction}
-
-pub type Msg {
-  RecordSaved(Result(Record, RpcError(SaveError)))
-  // ...
-}
-
-// In your update:
-FormSubmitted -> #(
-  Model(..model, saving: True),
-  rpc_records.save(
-    name: model.form.name,
-    email: model.form.email,
-    on_response: RecordSaved,
-  ),
-)
-
-RecordSaved(Ok(record)) -> { /* merge into list, clear form */ }
-RecordSaved(Error(AppError(DuplicateEmail))) -> { /* show form error */ }
-RecordSaved(Error(InternalError(trace_id))) -> { /* show generic error */ }
-RecordSaved(Error(_)) -> { /* framework fallthrough */ }
-```
-
-The compiler statically checks that you handle every `RpcError` variant.
 
 ## CLI flags
 
@@ -191,6 +206,10 @@ pub type RpcError(e) {
 ```
 
 Bare-return functions are exposed as `Result(T, RpcError(Never))`. `Never` is an uninhabited type, so the `AppError(_)` arm is statically unreachable and you can omit it from your pattern match. Functions that return `Result(T, E)` use `RpcError(E)` and require the full match.
+
+## Wire format
+
+The wire format is reflective. Custom types, tuples, Options, Results, and primitives all serialize and rebuild automatically without `Decoder`s or `encode` functions. The on-wire shape is `{"fn": "...", "args": [...]}` for the call and `{"@": "ok", "v": [...]}` for the response: simple enough to `tcpdump` and read.
 
 ## Runnable example
 
