@@ -803,16 +803,18 @@ fn do_walk(
     [#(module_path, type_name), ..rest_queue] -> {
       let key = #(module_path, type_name)
       // Skip already-visited items
-      use <- bool.guard(
+      use <- bool.lazy_guard(
         when: set.contains(visited, key),
-        return: do_walk(
-          queue: rest_queue,
-          visited: visited,
-          discovered: discovered,
-          module_files: module_files,
-          parsed_cache: parsed_cache,
-          errors: errors,
-        ),
+        return: fn() {
+          do_walk(
+            queue: rest_queue,
+            visited: visited,
+            discovered: discovered,
+            module_files: module_files,
+            parsed_cache: parsed_cache,
+            errors: errors,
+          )
+        },
       )
       let new_visited = set.insert(visited, key)
       process_type(
@@ -942,7 +944,10 @@ fn process_type_ast(
   // Check type alias - skip silently
   let is_alias =
     list.any(ast.type_aliases, fn(d) { d.definition.name == type_name })
-  use <- bool.guard(when: is_alias, return: continue_without_errors(new_cache))
+  use <- bool.lazy_guard(
+    when: is_alias,
+    return: fn() { continue_without_errors(new_cache) },
+  )
   // Find the custom type definition
   case list.find(ast.custom_types, fn(d) { d.definition.name == type_name }) {
     Error(Nil) ->

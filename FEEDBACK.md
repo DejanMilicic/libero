@@ -54,26 +54,21 @@ Alternatively/additionally: generate the client with a runtime setter so consume
 
 **Workaround:** the consumer can rewrite the generated `rpc_config.gleam` after generation, or patch the runtime `rpc_ffi.mjs` to ignore the baked URL. Both are hacks.
 
-### 9. Walker hangs silently when consumer has name-colliding variants across shared modules (BLOCKING)
+### 9. ~~Walker hangs silently~~ FIXED — was exponential blowup from eager bool.guard evaluation
 
-**Symptom:** With libero v2.0.0 + 02d273f, running libero against a consumer that has two shared modules with identically-named variant constructors causes the walker to hang silently between "wrote rpc_config.gleam" and the "register: N variants" line. The process enters sleeping state (blocked in `do_select`), is not CPU-spinning, and has no visible progress output. No error, no panic, no crash — just stops.
+**Was:** Walker hung indefinitely when a consumer had multiple modules reachable from @rpc signatures. Symptom looked like a name-collision issue but the real root cause was unrelated.
 
-**Reproducer (minimal):** The Curling IO v3 consumer has `shared/discount.gleam` and `shared/fee.gleam`, both of which declare `DatabaseError(String)`, `NameRequired`, and `InvalidAgeRange` as variant constructors on their respective error types. When only one of these is reachable from an `@rpc` function, the walker completes normally. When both are reachable, the walker hangs.
+**Root cause:** `do_walk` and `process_type_ast` both used `bool.guard(when:, return: ...)` where the `return:` argument was a recursive call to `do_walk`. Because Gleam evaluates function arguments eagerly, the recursive `do_walk` fired on EVERY call regardless of the `when:` condition. Each call to `do_walk` effectively ran `do_walk(rest_queue)` as a side effect of constructing the `bool.guard` arguments, before the skip check even ran. The result was exponential blowup: each level of the BFS forked into redundant chains that all eventually ran. For a graph with N reachable types the walker did O(2^N) work and hung long before finishing.
 
-**Bisect result:**
-- `discounts.*` enabled alone → works (37 variants discovered)
-- `fees.*` enabled alone → works (8 variants discovered)
-- `discounts.*` + `fees.*` together → hangs indefinitely
+With the v3 consumer, 8 seed types and ~20 reachable types produced millions of redundant process_type_ast calls. Looked like a hang, was actually just very slow exponential work.
 
-**Impact:** This blocked v3 regeneration entirely. The consumer can't port sections that share a colliding variant name with any other ported section's error/params type.
+**Fix:** Replace `bool.guard(when:, return: expr)` with `bool.lazy_guard(when:, return: fn() { expr })` in both call sites. `lazy_guard` takes a thunk and only evaluates it when the condition matches. This is the correct primitive whenever the `return` expression has side effects or is expensive. Two sites in `src/libero.gleam`:
+- `do_walk` — visited-set skip check (line ~803)
+- `process_type_ast` — is_alias early return (line ~944)
 
-**Hypothesis:** Either (a) the walker's visited-set deduplication is keyed only on `type_name` and a second visit with the same type_name from a different module_path triggers an infinite re-processing loop, or (b) the dispatch code generation is looking up variants by atom (via `to_snake_case(variant_name)`) and the collision causes a lookup to stall. The first hypothesis seems more likely given that the hang happens BEFORE dispatch writes (it's inside `write_register` → `walk_registry_types`).
+With the fix, the v3 consumer's full 8-section type graph (33 @rpc functions, 104 variants) processes in well under a second, as expected.
 
-**Suggestion:** Audit `do_walk` / `process_type_ast` / `collect_variant_field_refs` for correctness in the presence of duplicate variant names across different modules. Each `(module_path, type_name)` tuple is a unique visited entry; no variant name should ever cause a re-visit because the tuples differ. If the collision is tripping something up, it's in the registration step, not the walker — maybe duplicate atom registration is attempting to deduplicate via an iteration that doesn't terminate.
-
-**Ideally libero should also warn on atom collisions** like the three above. Two modules emitting `database_error` to the same atom table is a consumer bug (or at least a smell) that libero could surface at generation time rather than silently hanging.
-
-**Workaround:** Rename the colliding variants. The Curling v3 consumer already uses prefixed variants in every section *except* the two oldest ones (`DiscountError`, `FeeError`) — renaming `fee.DatabaseError` → `fee.FeeDatabaseError` and similar is also an independent consistency improvement.
+**Lesson:** Any `bool.guard` with a non-trivial `return:` expression is a latent bug. A good audit for libero: `grep -n "bool.guard" src/libero.gleam` and confirm each `return:` is either a constant or a trivially-cheap expression with no recursive calls or side effects. When in doubt, use `lazy_guard`.
 
 ## Ideas for future libero capabilities
 
