@@ -17,10 +17,12 @@
 ////    named a function that doesn't exist. Usually deployment skew
 ////    or a client-side bug.
 ////
-//// 3. Internal errors (`InternalError(trace_id)`) are unexpected
-////    runtime panics caught by the dispatch layer. The `trace_id`
-////    is opaque to the client; the full panic details are logged
-////    server-side under that id.
+//// 3. Internal errors (`InternalError(trace_id, message)`) are
+////    unexpected runtime panics caught by the dispatch layer. The
+////    `trace_id` is opaque to the client; the full panic details
+////    are logged server-side under that id. The `message` field
+////    contains a client-safe string suitable for display to end
+////    users without exposing internal details.
 ////
 //// ## Bare-T server functions
 ////
@@ -63,5 +65,9 @@ pub type RpcError(e) {
 
   /// The server function panicked while processing the request.
   /// The real details are logged server-side under this `trace_id`.
-  InternalError(trace_id: String)
+  /// The `message` field contains a client-safe string suitable for
+  /// display to end users (e.g. "Something went wrong, please try
+  /// again"). Consumers can override it in their error-display logic
+  /// or use it as-is.
+  InternalError(trace_id: String, message: String)
 }

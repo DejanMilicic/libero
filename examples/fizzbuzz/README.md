@@ -9,7 +9,7 @@ The example covers the three return shapes libero handles, the inject pattern, a
 - `classify(n) -> String` is a bare-T return with a single arg. Wire envelope on the client is `Result(String, RpcError(Never))`.
 - `range(from, to) -> Result(List(String), String)` is a wrapped `Result(T, E)` return with multiple args. The wrong-direction case exercises the `AppError` branch of the error envelope.
 - `whoami() -> String` reads a per-connection `client_id` from the Session via a `/// @inject` function. The client stub takes no arguments because the inject parameter never crosses the wire.
-- `crash(label) -> String` is a bare-T return that panics on the literal label `"boom"`, exercising libero's `trace.try_call` wrapper and surfacing an `InternalError(trace_id)` envelope to the client while logging the matching `PanicInfo` on the server.
+- `crash(label) -> String` is a bare-T return that panics on the literal label `"boom"`, exercising libero's `trace.try_call` wrapper and surfacing an `InternalError(trace_id, message)` envelope to the client while logging the matching `PanicInfo` on the server.
 
 ## Layout
 
@@ -55,7 +55,7 @@ Then open <http://localhost:4000>. Each section drives one of the four RPCs:
 1. **Classify** sends a number, gets back its FizzBuzz label.
 2. **Range** sends two numbers; try `from=10, to=1` to see the `AppError` branch fire.
 3. **Whoami** takes no input; the server returns the `client_id` it generated for your WebSocket connection. Refresh the page to get a new one.
-4. **Crash** with the label `"boom"` triggers a server panic and exercises the `InternalError(trace_id)` envelope plus the matching server log.
+4. **Crash** with the label `"boom"` triggers a server panic and exercises the `InternalError(trace_id, message)` envelope plus the matching server log.
 
 ## The server surface
 

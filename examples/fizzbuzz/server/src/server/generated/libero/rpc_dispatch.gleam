@@ -52,7 +52,7 @@ fn dispatch(
         Error(reason) -> {
           let trace_id = trace.new_trace_id()
           #(
-            wire.encode(Error(InternalError(trace_id: trace_id))),
+            wire.encode(Error(InternalError(trace_id: trace_id, message: "Something went wrong, please try again."))),
             Some(PanicInfo(
               trace_id: trace_id,
               fn_name: "fizzbuzz.crash",
@@ -70,7 +70,7 @@ fn dispatch(
         Error(reason) -> {
           let trace_id = trace.new_trace_id()
           #(
-            wire.encode(Error(InternalError(trace_id: trace_id))),
+            wire.encode(Error(InternalError(trace_id: trace_id, message: "Something went wrong, please try again."))),
             Some(PanicInfo(
               trace_id: trace_id,
               fn_name: "fizzbuzz.whoami",
@@ -89,7 +89,7 @@ fn dispatch(
         Error(reason) -> {
           let trace_id = trace.new_trace_id()
           #(
-            wire.encode(Error(InternalError(trace_id: trace_id))),
+            wire.encode(Error(InternalError(trace_id: trace_id, message: "Something went wrong, please try again."))),
             Some(PanicInfo(
               trace_id: trace_id,
               fn_name: "fizzbuzz.range",
@@ -107,7 +107,7 @@ fn dispatch(
         Error(reason) -> {
           let trace_id = trace.new_trace_id()
           #(
-            wire.encode(Error(InternalError(trace_id: trace_id))),
+            wire.encode(Error(InternalError(trace_id: trace_id, message: "Something went wrong, please try again."))),
             Some(PanicInfo(
               trace_id: trace_id,
               fn_name: "fizzbuzz.classify",

@@ -2575,7 +2575,7 @@ fn render_dispatch_case(rpc: Rpc) -> String {
     "        Error(reason) -> {\n"
     <> "          let trace_id = trace.new_trace_id()\n"
     <> "          #(\n"
-    <> "            wire.encode(Error(InternalError(trace_id: trace_id))),\n"
+    <> "            wire.encode(Error(InternalError(trace_id: trace_id, message: \"Something went wrong, please try again.\"))),\n"
     <> "            Some(PanicInfo(\n"
     <> "              trace_id: trace_id,\n"
     <> "              fn_name: \""

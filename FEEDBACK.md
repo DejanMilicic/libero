@@ -26,13 +26,9 @@ Clarified CLI help text, generated config comments, and README to make it clear 
 
 When a Wire parameter's rendered type matches an `@inject` function's return type but the label doesn't match, libero now emits a `LikelyInjectTypo` error with a suggested fix. This catches typos like `tzdb` vs `tz_db` at generation time instead of producing silently wrong code.
 
-### 4. `InternalError(trace_id)` is opaque to the client (MEDIUM)
+### 4. ~~`InternalError(trace_id)` is opaque to the client~~ FIXED
 
-**Symptom:** When a server-side `@rpc` function panics or raises an error that isn't in its declared error type, the client receives `InternalError(trace_id: "...")`. The trace_id helps find the error server-side, but the client has no way to show a useful message to the user.
-
-**Current workaround:** Every SPA page has `InternalError(trace_id:) -> "Internal error (trace " <> trace_id <> ")"` — useful to developers, useless to end users.
-
-**Suggestion:** Either include a client-safe error message in `InternalError` (e.g. "Internal server error, please retry"), or let the server-side `@rpc` function opt into sending structured error details. Alternatively, support logging trace_ids to a debug sink without surfacing them in the message.
+Added a `message: String` field to `InternalError`, populated with a default client-safe string ("Something went wrong, please try again.") in the generated dispatch. Consumers can pattern-match on `message` to show users something meaningful without leaking trace IDs or stack traces into the UI.
 
 ### 5. Killing parent build doesn't always kill libero child process (HIGH)
 

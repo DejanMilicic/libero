@@ -50,7 +50,7 @@ FormSubmitted -> #(
 
 RecordSaved(Ok(record)) -> { /* merge into list, clear form */ }
 RecordSaved(Error(AppError(DuplicateEmail))) -> { /* show form error */ }
-RecordSaved(Error(InternalError(trace_id))) -> { /* show generic error */ }
+RecordSaved(Error(InternalError(_trace_id, message))) -> { /* show message to user */ }
 RecordSaved(Error(_)) -> { /* framework fallthrough */ }
 ```
 
@@ -202,8 +202,9 @@ pub type RpcError(e) {
   UnknownFunction(name: String)
 
   /// Server function panicked. The real panic is logged server-side
-  /// under this opaque trace_id.
-  InternalError(trace_id: String)
+  /// under this opaque trace_id. The message is client-safe and can
+  /// be shown to end users directly.
+  InternalError(trace_id: String, message: String)
 }
 ```
 

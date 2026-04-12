@@ -180,8 +180,7 @@ fn framework_message_never(e: RpcError(Never)) -> String {
   case e {
     MalformedRequest -> "malformed request"
     UnknownFunction(name) -> "unknown function: " <> name
-    InternalError(trace_id) ->
-      "server panicked (trace " <> trace_id <> ", see server logs)"
+    InternalError(message:, ..) -> message
     AppError(_) -> "impossible"
   }
 }
@@ -191,8 +190,7 @@ fn framework_message_app(e: RpcError(String)) -> String {
     AppError(message) -> "app error: " <> message
     MalformedRequest -> "malformed request"
     UnknownFunction(name) -> "unknown function: " <> name
-    InternalError(trace_id) ->
-      "server panicked (trace " <> trace_id <> ", see server logs)"
+    InternalError(message:, ..) -> message
   }
 }
 
@@ -304,7 +302,7 @@ fn view_crash(model: Model) -> Element(Msg) {
     html.p([attribute.class("hint")], [
       html.text(
         "Bare return that panics on the label \"boom\". Watch the client "
-        <> "receive InternalError(trace_id) while the server logs the panic "
+        <> "receive InternalError(trace_id, message) while the server logs the panic "
         <> "via libero's PanicInfo bubble-up. Anything other than \"boom\" "
         <> "returns a normal string.",
       ),
