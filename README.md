@@ -232,4 +232,4 @@ Then open <http://localhost:4000>.
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](https://github.com/pairshaped/libero/blob/master/LICENSE).
