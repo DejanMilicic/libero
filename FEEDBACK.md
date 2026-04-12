@@ -30,11 +30,9 @@ When a Wire parameter's rendered type matches an `@inject` function's return typ
 
 Added a `message: String` field to `InternalError`, populated with a default client-safe string ("Something went wrong, please try again.") in the generated dispatch. Consumers can pattern-match on `message` to show users something meaningful without leaking trace IDs or stack traces into the UI.
 
-### 5. Killing parent build doesn't always kill libero child process (HIGH)
+### 5. ~~Killing parent build doesn't always kill libero child process~~ FIXED
 
-**Symptom:** When a consumer's build script is interrupted (Ctrl-C or SIGTERM from a sandbox), its libero child process sometimes survives and continues spinning at 99% CPU. This compounds issue #1 — each interrupted run leaks a stuck libero process.
-
-**Suggestion:** Libero should set up `SIGTERM` / `SIGINT` handling to exit cleanly when its parent dies. Alternatively (or additionally), consumers' build scripts should trap and propagate signals to child processes, but that's consumer code — libero should defend itself too.
+Root cause was #1 (missing `halt(0)` on success). Additionally, `main()` now installs SIGTERM and SIGHUP handlers via a spawned Erlang signal loop that calls `halt(1)` on receipt, so libero exits cleanly even when killed mid-generation.
 
 ### 6. Dependency invalidation is consumer-managed (LOW)
 

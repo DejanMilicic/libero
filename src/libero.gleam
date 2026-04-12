@@ -358,6 +358,7 @@ fn find_flag(args args: List(String), name name: String) -> Result(String, Nil) 
 // ---------- Entry point ----------
 
 pub fn main() -> Nil {
+  trap_signals()
   let config = parse_config()
   io.println("libero: scanning " <> config.scan_root)
 
@@ -575,6 +576,9 @@ fn format_file_error(err: simplifile.FileError) -> String {
 
 @external(erlang, "erlang", "halt")
 fn halt(code: Int) -> Nil
+
+@external(erlang, "libero_ffi", "trap_signals")
+fn trap_signals() -> Nil
 
 // ---------- Config file ----------
 
