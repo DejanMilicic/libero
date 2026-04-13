@@ -7,13 +7,24 @@
 %% Erlang term shapes.
 
 -module(libero_ffi).
--export([try_call/1, encode/1, decode/1, trap_signals/0]).
+-export([try_call/1, encode/1, decode/1, decode_safe/1, trap_signals/0]).
 
 encode(Term) ->
     erlang:term_to_binary(Term).
 
 decode(Bin) ->
     erlang:binary_to_term(Bin, [safe]).
+
+decode_safe(Bin) ->
+    try erlang:binary_to_term(Bin, [safe]) of
+        Term -> {ok, Term}
+    catch
+        _:Reason ->
+            Msg = erlang:iolist_to_binary(
+                io_lib:format("~p", [Reason])
+            ),
+            {error, {decode_error, Msg}}
+    end.
 
 %% Install signal handlers so libero exits cleanly when its parent
 %% build script is killed (Ctrl-C, SIGTERM from sandbox, etc.).

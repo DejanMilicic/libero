@@ -643,6 +643,24 @@ export function decode_value(buffer) {
   return decoder.decode();
 }
 
+// Safe variant of decode_value that returns a Result instead of throwing.
+// Used by the public `libero.wire.decode_safe` function.
+export function decode_safe(buffer) {
+  try {
+    const decoder = new ETFDecoder(buffer);
+    const value = decoder.decode();
+    const okCtor = registry.get("ok");
+    if (okCtor) return new okCtor(value);
+    return { type: "Ok", 0: value };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    const errorCtor = registry.get("error");
+    const decodeCtor = registry.get("decode_error");
+    if (errorCtor && decodeCtor) return new errorCtor(new decodeCtor(msg));
+    return { type: "Error", 0: { type: "DecodeError", 0: msg } };
+  }
+}
+
 function normalizeArgs(args) {
   // Nil in Gleam compiles to undefined on JS.
   if (args === undefined) return [];
@@ -696,6 +714,14 @@ try {
 }
 
 try {
+  const wireMod = await import("./wire.mjs");
+  if (wireMod.DecodeError)
+    registerConstructor("decode_error", wireMod.DecodeError);
+} catch (_) {
+  // Standalone mode - libero wire unavailable.
+}
+
+try {
   const optionMod = await import("../../gleam_stdlib/gleam/option.mjs");
   if (optionMod.Some) registerConstructor("some", optionMod.Some);
   if (optionMod.None) registerConstructor("none", optionMod.None);
@@ -727,10 +753,9 @@ try {
 // before the socket's open event are queued and flushed once it opens.
 //
 // On disconnect, the socket reconnects with exponential backoff (100ms
-// to 5s cap). In-flight callbacks from before the disconnect stay in
-// the queue - they will receive the next responses after reconnection.
-// This means responses may not match their original requests after a
-// reconnect, but it is better than a permanently stuck Lustre app.
+// to 5s cap). In-flight callbacks from before the disconnect are
+// drained with a ConnectionLost error so they don't silently receive
+// responses meant for different requests after reconnection.
 
 let ws = null;
 let callbackQueue = [];
@@ -763,6 +788,7 @@ function ensureSocket(url) {
 
   ws.addEventListener("close", () => {
     ws = null;
+    drainCallbacksOnDisconnect();
     scheduleReconnect();
   });
 
@@ -773,6 +799,43 @@ function ensureSocket(url) {
       ws.close();
     }
   });
+}
+
+// Drain in-flight callbacks with a ConnectionLost error on disconnect.
+// Without this, callbacks from before the disconnect would receive
+// responses meant for different requests after reconnection (FIFO
+// mismatch), causing silent data corruption via unsafe_coerce.
+function drainCallbacksOnDisconnect() {
+  const stale = callbackQueue.splice(0);
+  // Build an InternalError("connection_lost", "WebSocket disconnected")
+  // that matches libero's RpcError shape.
+  // Wire shape: Error(InternalError(trace_id, message))
+  // = {error, {internal_error, trace_id, message}} in ETF terms
+  // but since we're on the JS side, we build the Gleam constructor directly.
+  for (const cb of stale) {
+    try {
+      // Import the error constructors lazily. If gleam_stdlib is available,
+      // we can build a proper Error(InternalError(...)) value.
+      // The constructors are already registered via register_all().
+      const errorValue = buildConnectionLostError();
+      cb(errorValue);
+    } catch (_) {
+      // If we can't build the error shape, just drop the callback.
+      // This is still better than silent data corruption.
+    }
+  }
+}
+
+// Build an Error(InternalError("connection_lost", "WebSocket disconnected"))
+// using the registered Gleam constructors.
+function buildConnectionLostError() {
+  const internalError = registry.get("internal_error");
+  const errorCtor = registry.get("error");
+  if (internalError && errorCtor) {
+    return new errorCtor(new internalError("connection_lost", "WebSocket disconnected"));
+  }
+  // Fallback: return a tagged object that pattern matching can still handle.
+  return { type: "Error", 0: { type: "InternalError", 0: "connection_lost", 1: "WebSocket disconnected" } };
 }
 
 function scheduleReconnect() {

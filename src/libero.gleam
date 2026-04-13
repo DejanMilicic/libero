@@ -182,6 +182,7 @@ type GenError {
   NoContextParam(path: String, fn_name: String)
   NoReturnType(path: String, fn_name: String)
   UnlabelledParam(path: String, fn_name: String, position: Int)
+  UntypedParam(path: String, fn_name: String, position: Int)
   UnknownType(path: String, fn_name: String, type_name: String)
   DuplicateWireName(wire_name: String)
   LikelyInjectTypo(
@@ -557,6 +558,14 @@ fn print_error(err: GenError) -> Nil {
       <> "` parameter at position "
       <> int.to_string(position)
       <> " has no label"
+    UntypedParam(path, fn_name, position) ->
+      path
+      <> ": @rpc function `"
+      <> fn_name
+      <> "` parameter at position "
+      <> int.to_string(position)
+      <> " has no type annotation"
+      <> "\n  every @rpc parameter must explicitly annotate its type"
       <> "\n  @rpc parameters must be labelled: `name name: String`"
     UnknownType(path, fn_name, type_name) ->
       path
@@ -1008,19 +1017,17 @@ fn process_type_ast(
       let custom_type = ct_def.definition
       let resolver = build_type_resolver(ast.imports)
       // Collect variants and field type refs
-      let #(new_discovered, new_queue_items) =
-        list.fold(custom_type.variants, #(discovered, []), fn(acc, variant) {
+      let #(new_discovered_rev, new_queue_items_rev) =
+        list.fold(custom_type.variants, #([], []), fn(acc, variant) {
           let #(disc_acc, queue_acc) = acc
           let float_indices = detect_float_fields(variant.fields)
-          let new_disc =
-            list.append(disc_acc, [
-              DiscoveredVariant(
-                module_path: module_path,
-                variant_name: variant.name,
-                atom_name: to_snake_case(variant.name),
-                float_field_indices: float_indices,
-              ),
-            ])
+          let disc_item =
+            DiscoveredVariant(
+              module_path: module_path,
+              variant_name: variant.name,
+              atom_name: to_snake_case(variant.name),
+              float_field_indices: float_indices,
+            )
           let field_refs =
             collect_variant_field_refs(
               variant: variant,
@@ -1028,8 +1035,11 @@ fn process_type_ast(
               current_module: module_path,
               visited: visited,
             )
-          #(new_disc, list.append(queue_acc, field_refs))
+          #([disc_item, ..disc_acc], list.append(field_refs, queue_acc))
         })
+      let new_discovered =
+        list.append(discovered, list.reverse(new_discovered_rev))
+      let new_queue_items = list.reverse(new_queue_items_rev)
       do_walk(
         queue: list.append(rest_queue, new_queue_items),
         visited: visited,
@@ -1076,10 +1086,11 @@ fn detect_float_fields(fields: List(glance.VariantField)) -> List(Int) {
       glance.UnlabelledVariantField(item:) -> item
     }
     case is_float_type(field_type) {
-      True -> list.append(acc, [index])
+      True -> [index, ..acc]
       False -> acc
     }
   })
+  |> list.reverse
 }
 
 /// Check if a glance type is `Float` (unqualified or gleam-qualified).
@@ -1181,15 +1192,46 @@ fn collect_type_refs(
 
 /// Convert a PascalCase variant name to snake_case for the wire atom.
 /// "AdminData" → "admin_data", "One" → "one", "TwoOrMore" → "two_or_more".
+/// Handles consecutive uppercase: "XMLParser" → "xml_parser".
+/// Must stay aligned with `snakeCase()` in rpc_ffi.mjs.
 fn to_snake_case(name: String) -> String {
   let graphemes = string.to_graphemes(name)
-  list.index_fold(graphemes, "", fn(acc, g, i) {
+  // Build triples of (prev, current, next) so we can detect acronym
+  // boundaries without random access. prev/next are "" at edges.
+  let triples = build_triples(remaining: graphemes, prev: "")
+  list.index_fold(triples, "", fn(acc, triple, i) {
+    let #(prev, g, next) = triple
     case i == 0, is_upper_grapheme(g) {
       True, _ -> acc <> string.lowercase(g)
-      False, True -> acc <> "_" <> string.lowercase(g)
+      False, True -> {
+        let prev_upper = is_upper_grapheme(prev)
+        let next_lower = next != "" && !is_upper_grapheme(next)
+        case prev_upper, next_lower {
+          // UPPER→UPPER→lower: start of new word after acronym
+          True, True -> acc <> "_" <> string.lowercase(g)
+          // UPPER→UPPER→(UPPER|end): still in acronym, no separator
+          True, False -> acc <> string.lowercase(g)
+          // lower→UPPER: normal camelCase boundary
+          _, _ -> acc <> "_" <> string.lowercase(g)
+        }
+      }
       False, False -> acc <> g
     }
   })
+}
+
+fn build_triples(
+  remaining remaining: List(String),
+  prev prev: String,
+) -> List(#(String, String, String)) {
+  case remaining {
+    [] -> []
+    [g] -> [#(prev, g, "")]
+    [g, next, ..rest] -> [
+      #(prev, g, next),
+      ..build_triples(remaining: [next, ..rest], prev: g)
+    ]
+  }
 }
 
 fn is_upper_grapheme(g: String) -> Bool {
@@ -1251,20 +1293,20 @@ fn parse_path_dep_line(line: String) -> Result(PathDep, Nil) {
   // Leading whitespace and optional version pins are not supported;
   // path deps use the object form exclusively.
   let trimmed = string.trim(line)
-  use #(name_part, rest1) <- result.try(split_once(string: trimmed, on: "="))
+  use #(name_part, rest1) <- result.try(split_once(input: trimmed, on: "="))
   let name = string.trim(name_part)
   case string.contains(rest1, "path") && string.contains(rest1, "{") {
     False -> Error(Nil)
     True -> {
-      use #(_, after_path) <- result.try(split_once(string: rest1, on: "path"))
-      use #(_, after_eq) <- result.try(split_once(string: after_path, on: "="))
+      use #(_, after_path) <- result.try(split_once(input: rest1, on: "path"))
+      use #(_, after_eq) <- result.try(split_once(input: after_path, on: "="))
       let after_eq_trim = string.trim(after_eq)
       use #(_, after_open) <- result.try(split_once(
-        string: after_eq_trim,
+        input: after_eq_trim,
         on: "\"",
       ))
       use #(path_value, _) <- result.try(split_once(
-        string: after_open,
+        input: after_open,
         on: "\"",
       ))
       case name {
@@ -1276,13 +1318,10 @@ fn parse_path_dep_line(line: String) -> Result(PathDep, Nil) {
 }
 
 fn split_once(
-  string string: String,
+  input input: String,
   on separator: String,
 ) -> Result(#(String, String), Nil) {
-  case string.split_once(string, on: separator) {
-    Ok(pair) -> Ok(pair)
-    Error(Nil) -> Error(Nil)
-  }
+  string.split_once(input, on: separator)
 }
 
 /// Resolve a path dep path (from the client's gleam.toml) to a path
@@ -2085,10 +2124,15 @@ fn classify_parameter(
         path: path,
         fn_name: fn_name,
       )
+    glance.FunctionParameter(label: Some(_), type_: None, ..) -> #(
+      classified_so_far,
+      imports_so_far,
+      [UntypedParam(path, fn_name, i + 1), ..errors_so_far],
+    )
     _ -> #(
       classified_so_far,
       imports_so_far,
-      list.append(errors_so_far, [UnlabelledParam(path, fn_name, i + 1)]),
+      [UnlabelledParam(path, fn_name, i + 1), ..errors_so_far],
     )
   }
 }

@@ -52,11 +52,31 @@ pub fn encode(value: a) -> BitArray
 ///
 /// **Panics on malformed input.** In a typical libero deployment
 /// both sides are controlled, so this is a sharp-edge check rather
-/// than a user-facing error. For untrusted input, validate upstream
-/// and/or use `decode_call` which returns a `Result`.
+/// than a user-facing error. For untrusted input, use `decode_safe`
+/// which returns a `Result`.
 @external(erlang, "libero_ffi", "decode")
 @external(javascript, "./rpc_ffi.mjs", "decode_value")
 pub fn decode(data: BitArray) -> a
+
+// ---------- Safe decoder (arbitrary value) ----------
+
+/// Decode an ETF binary into an arbitrary Gleam value, returning a
+/// `Result` instead of panicking on malformed input.
+///
+/// Use this for non-RPC paths where the input may be untrusted or
+/// user-influenced — for example, reading server-rendered state from
+/// Lustre flags on client boot where the binary may have been
+/// corrupted in transit.
+pub fn decode_safe(data: BitArray) -> Result(a, DecodeError) {
+  ffi_decode_safe(data)
+}
+
+@external(erlang, "libero_ffi", "decode_safe")
+@external(javascript, "./rpc_ffi.mjs", "decode_safe")
+fn ffi_decode_safe(data: BitArray) -> Result(a, DecodeError) {
+  let _ = data
+  panic as "libero/wire.ffi_decode_safe is unreachable — externals handle both targets"
+}
 
 // ---------- Decoder (incoming call envelope) ----------
 

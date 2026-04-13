@@ -9,6 +9,14 @@
 //// and caches the connection. Calls issued before the socket is open
 //// are queued and flushed on the open event.
 ////
+//// **Type safety note:** The response from the server is `unsafe_coerce`d
+//// from `Dynamic` to the expected return type. This is safe when the
+//// client and server are built from the same source (the generator
+//// guarantees the types match). However, deployment skew — where the
+//// client is built against a newer or older server — can cause silent
+//// type mismatches at runtime. Ensure client and server are deployed
+//// together to avoid this.
+////
 //// Developers don't usually call this module directly. They import
 //// the per-module stubs the Libero generator writes into their
 //// client package, and those stubs internally delegate here.
