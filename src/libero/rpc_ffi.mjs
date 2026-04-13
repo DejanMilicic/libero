@@ -580,11 +580,15 @@ function snakeCase(name) {
 
 // ---------- Public codec API ----------
 
+// Decode an ETF buffer into a JS-shaped value. Used internally by
+// libero's RPC machinery to parse incoming call responses.
 export function decode(buffer) {
   const decoder = new ETFDecoder(buffer);
   return decoder.decode();
 }
 
+// Encode a {function_name, args} call envelope. Used internally by
+// libero's RPC machinery to format outgoing call requests.
 export function encode(name, args) {
   const normalizedArgs = normalizeArgs(args);
   const encoder = new ETFEncoder();
@@ -598,6 +602,28 @@ export function encode(name, args) {
   // Element 1: args as LIST_EXT
   encoder.encodeList(normalizedArgs);
   return encoder.result();
+}
+
+// Encode a standalone Gleam value to an ETF binary. Used by the
+// public `libero.wire.encode` function. Unlike `encode(name, args)`
+// above, there is no call envelope — the result is the raw ETF
+// encoding of a single value. Intended for non-RPC paths like
+// passing state into a Lustre SPA via init flags.
+export function encode_value(value) {
+  const encoder = new ETFEncoder();
+  encoder.writeUint8(131); // ETF version byte
+  encoder.encodeTerm(value);
+  return encoder.result();
+}
+
+// Decode a standalone Gleam value from an ETF binary. Used by the
+// public `libero.wire.decode` function. Symmetric with `encode_value`
+// above — decodes a single value, not a call envelope. Custom type
+// constructors must have been registered via `register_all()` at
+// boot for the decoder to rebuild them correctly.
+export function decode_value(buffer) {
+  const decoder = new ETFDecoder(buffer);
+  return decoder.decode();
 }
 
 function normalizeArgs(args) {

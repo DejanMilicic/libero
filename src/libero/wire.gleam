@@ -12,15 +12,51 @@
 ////   second is a list of arbitrary terms.
 //// - The response is the Gleam value directly (e.g. `Ok(value)` or
 ////   `Error(MalformedRequest)`), serialized as ETF.
+////
+//// **Cross-target:** `encode` and `decode` work on both Erlang and
+//// JavaScript targets. The Erlang path uses the BEAM's native
+//// `term_to_binary` / `binary_to_term`. The JavaScript path uses
+//// libero's own ETF encoder/decoder in `rpc_ffi.mjs`, which requires
+//// that any custom-type constructors in the value have been registered
+//// via `register_all()` at boot (libero's generator emits that
+//// registration for every type reachable from the `@rpc` type graph).
 
 import gleam/dynamic.{type Dynamic}
 
 // ---------- Encoder ----------
 
 /// Encode any Gleam value to an ETF binary.
-pub fn encode(value: a) -> BitArray {
-  ffi_encode(coerce(value))
-}
+///
+/// Works on both Erlang and JavaScript targets. Used internally by
+/// libero to serialize RPC responses, and also available for non-RPC
+/// paths (e.g. passing server-rendered state into a Lustre SPA via
+/// flags, in the Elm "init flags" style).
+@external(erlang, "libero_ffi", "encode")
+@external(javascript, "./rpc_ffi.mjs", "encode_value")
+pub fn encode(value: a) -> BitArray
+
+// ---------- Decoder (arbitrary value) ----------
+
+/// Decode an ETF binary into an arbitrary Gleam value.
+///
+/// Works on both Erlang and JavaScript targets. Use this for non-RPC
+/// paths — for example, reading server-rendered state from Lustre
+/// flags on client boot. For decoding incoming RPC call envelopes
+/// specifically, use `decode_call` instead.
+///
+/// Any custom types in the decoded value must be reachable from the
+/// `@rpc` type graph so their constructors are registered with the
+/// JavaScript codec (via `register_all()` at boot). On Erlang this
+/// is automatic because atoms are pre-registered by the generated
+/// `rpc_atoms` module.
+///
+/// **Panics on malformed input.** In a typical libero deployment
+/// both sides are controlled, so this is a sharp-edge check rather
+/// than a user-facing error. For untrusted input, validate upstream
+/// and/or use `decode_call` which returns a `Result`.
+@external(erlang, "libero_ffi", "decode")
+@external(javascript, "./rpc_ffi.mjs", "decode_value")
+pub fn decode(data: BitArray) -> a
 
 // ---------- Decoder (incoming call envelope) ----------
 
@@ -32,6 +68,9 @@ pub type DecodeError {
 /// Returns the function name and args list. Since `binary_to_term`
 /// returns real Erlang terms, no rebuild step is needed - atoms are
 /// atoms, tuples are tuples, maps are maps.
+///
+/// This is specifically for RPC call envelopes. For decoding
+/// arbitrary values, use `decode`.
 pub fn decode_call(
   data: BitArray,
 ) -> Result(#(String, List(Dynamic)), DecodeError) {
@@ -41,10 +80,12 @@ pub fn decode_call(
 @external(erlang, "libero_wire_ffi", "decode_call")
 fn ffi_decode_call(
   data: BitArray,
-) -> Result(#(String, List(Dynamic)), DecodeError)
-
-@external(erlang, "libero_ffi", "encode")
-fn ffi_encode(value: Dynamic) -> BitArray
-
-@external(erlang, "gleam_stdlib", "identity")
-fn coerce(value: a) -> Dynamic
+) -> Result(#(String, List(Dynamic)), DecodeError) {
+  // JS fallback. `decode_call` is specifically for parsing incoming
+  // RPC call envelopes, which only the server does. JavaScript
+  // consumers never call this — they call the generated client
+  // stubs, which handle response decoding via the internal `decode`
+  // helper in rpc_ffi.mjs, not via this Gleam-level function.
+  let _ = data
+  panic as "libero/wire.decode_call is a server-side function, unreachable on JavaScript target"
+}

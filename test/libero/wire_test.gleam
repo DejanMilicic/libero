@@ -91,12 +91,53 @@ pub fn decode_call_wrong_shape_test() {
   )) = wire.decode_call(bad)
 }
 
+// ---------- Direct encode → decode round-trip ----------
+//
+// These exercise the public `wire.encode` and `wire.decode` functions
+// as a symmetric pair, the way consumers use them for non-RPC paths
+// (e.g. passing server-rendered state into a Lustre SPA via flags).
+// Distinct from the call-envelope round-trips in wire_roundtrip_test —
+// those wrap the value in `{name, args}` and use `decode_call`.
+
+pub fn roundtrip_int_via_decode_test() {
+  let result: Int = wire.decode(wire.encode(42))
+  let assert 42 = result
+}
+
+pub fn roundtrip_string_via_decode_test() {
+  let result: String = wire.decode(wire.encode("hello"))
+  let assert "hello" = result
+}
+
+pub fn roundtrip_bool_via_decode_test() {
+  let result: Bool = wire.decode(wire.encode(True))
+  let assert True = result
+}
+
+pub fn roundtrip_list_via_decode_test() {
+  let result: List(Int) = wire.decode(wire.encode([1, 2, 3]))
+  let assert [1, 2, 3] = result
+}
+
+pub fn roundtrip_option_some_via_decode_test() {
+  let result: option.Option(String) = wire.decode(wire.encode(Some("x")))
+  let assert Some("x") = result
+}
+
+pub fn roundtrip_option_none_via_decode_test() {
+  let result: option.Option(Int) = wire.decode(wire.encode(None))
+  let assert None = result
+}
+
+pub fn roundtrip_tuple_via_decode_test() {
+  let result: #(String, Int, Bool) =
+    wire.decode(wire.encode(#("session", 42, True)))
+  let assert #("session", 42, True) = result
+}
+
 // ---------- Helpers ----------
 
-fn encode_call_envelope(
-  name: String,
-  args: List(Dynamic),
-) -> BitArray {
+fn encode_call_envelope(name: String, args: List(Dynamic)) -> BitArray {
   ffi_encode(coerce(#(name, args)))
 }
 
