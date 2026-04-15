@@ -155,3 +155,24 @@ fn unsafe_coerce(value: Dynamic) -> a
 
 @external(erlang, "erlang", "byte_size")
 fn bit_array_byte_size(bits: BitArray) -> Int
+
+pub fn encode_call_decode_call_roundtrip_string_test() {
+  let encoded = wire.encode_call(module: "shared/todos", msg: "hello")
+  let assert Ok(#("shared/todos", msg)) = wire.decode_call(encoded)
+  let decoded: String = wire.coerce(msg)
+  let assert "hello" = decoded
+}
+
+pub fn encode_call_decode_call_roundtrip_int_test() {
+  let encoded = wire.encode_call(module: "shared/todos", msg: 42)
+  let assert Ok(#("shared/todos", msg)) = wire.decode_call(encoded)
+  let decoded: Int = wire.coerce(msg)
+  let assert 42 = decoded
+}
+
+pub fn encode_call_decode_call_roundtrip_tuple_test() {
+  let encoded = wire.encode_call(module: "my/module", msg: #("a", 1))
+  let assert Ok(#("my/module", msg)) = wire.decode_call(encoded)
+  let decoded: #(String, Int) = wire.coerce(msg)
+  let assert #("a", 1) = decoded
+}
