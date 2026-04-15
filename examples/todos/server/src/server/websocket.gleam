@@ -7,22 +7,22 @@ import mist
 import server/generated/libero/dispatch
 import server/shared_state.{type SharedState}
 
-pub type State {
-  State(shared: SharedState)
+pub type ConnState {
+  ConnState(shared: SharedState)
 }
 
 pub fn on_init(shared: SharedState) {
-  fn(_conn: mist.WebsocketConnection) -> #(State, Option(process.Selector(Nil))) {
+  fn(_conn: mist.WebsocketConnection) -> #(ConnState, Option(process.Selector(Nil))) {
     io.println("[ws] client connected")
-    #(State(shared:), None)
+    #(ConnState(shared:), None)
   }
 }
 
 pub fn handler(
-  state: State,
+  state: ConnState,
   message: mist.WebsocketMessage(Nil),
   conn: mist.WebsocketConnection,
-) -> mist.Next(State, Nil) {
+) -> mist.Next(ConnState, Nil) {
   case message {
     mist.Binary(data) -> {
       io.println("[ws] raw bytes: " <> string.inspect(data))
@@ -40,7 +40,7 @@ pub fn handler(
         None -> Nil
       }
       let _ = mist.send_binary_frame(conn, response_bytes)
-      mist.continue(State(shared: new_shared))
+      mist.continue(ConnState(shared: new_shared))
     }
     mist.Closed | mist.Shutdown -> {
       io.println("[ws] client disconnected")
