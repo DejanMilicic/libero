@@ -55,7 +55,7 @@ A throwaway test bed. Three Gleam packages (`server/`, `client/`, `shared/`) mir
 
 First wire implementation used ETF (Erlang Term Format). Binary, compact, beam-native. `term_to_binary` on the server, a hand-rolled ~300-line JS decoder on the client to rebuild Gleam custom types from the raw ETF bytes. Worked fine, round-tripped cleanly.
 
-Then Louis mentioned offhand: *"I'd recommend JSON over ETF, it's much faster. Native `JSON.parse` beats any hand-rolled binary decoder in the browser."* Never formally benchmarked (there's a deferred bean for it; see "Open questions" below), but the intuition held up under inspection:
+Then Louis mentioned offhand: *"I'd recommend JSON over ETF, it's much faster. Native `JSON.parse` beats any hand-rolled binary decoder in the browser."* Never formally benchmarked, but the intuition held up under inspection:
 
 - Browser `JSON.parse` is written in C++ and has been tuned for two decades.
 - Our ETF decoder was ~300 lines of JavaScript doing byte-level work.
@@ -64,7 +64,7 @@ Then Louis mentioned offhand: *"I'd recommend JSON over ETF, it's much faster. N
 
 Switched to JSON. Decoder shrunk to ~50 lines: parse with `JSON.parse`, walk the tree, rebuild Gleam custom types via a constructor registry registered at app startup. Result: smaller code, faster decode, easier debugging.
 
-The ETF branch still exists somewhere in the git history if the benchmark bean ever surfaces a reason to revisit. It probably won't.
+The ETF branch still exists somewhere in the git history. v3 switched back to ETF after the JSON detour proved unnecessary for a same-language stack.
 
 ### Phase 4: From hand-written dispatch to annotation-driven codegen
 
