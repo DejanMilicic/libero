@@ -1217,13 +1217,6 @@ fn module_to_mjs_path(module_path: String) -> String {
 
 // ---------- Source discovery ----------
 
-// Files within the walk root that should NOT be included.
-// sql.gleam is parrot's output - skip it explicitly to avoid
-// slowing down glance parsing on every scan.
-const scan_excludes = [
-  "sql.gleam",
-]
-
 /// Recursively walk a directory, returning every `.gleam` file found.
 /// Skips any subdirectory named `generated`, since libero never reads its
 /// own output, and leaving this convention in place means consumers
@@ -1272,7 +1265,7 @@ fn visit_subdirectory(
 ) -> Result(List(String), GenError) {
   use <- bool.guard(when: entry == "generated", return: Ok(acc))
   use nested <- result.try(walk_directory(path: child))
-  Ok(list.append(acc, nested))
+  Ok(list.append(nested, acc))
 }
 
 fn visit_file(
@@ -1280,10 +1273,8 @@ fn visit_file(
   entry entry: String,
   child child: String,
 ) -> List(String) {
-  let keep =
-    string.ends_with(entry, ".gleam") && !list.contains(scan_excludes, entry)
-  case keep {
-    True -> list.append(acc, [child])
+  case string.ends_with(entry, ".gleam") {
+    True -> [child, ..acc]
     False -> acc
   }
 }
