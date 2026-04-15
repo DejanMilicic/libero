@@ -174,7 +174,7 @@ type ReturnShape {
 
 // ---------- Errors ----------
 
-type GenError {
+pub type GenError {
   CannotReadDir(path: String, cause: simplifile.FileError)
   CannotReadFile(path: String, cause: simplifile.FileError)
   CannotWriteFile(path: String, cause: simplifile.FileError)
@@ -195,6 +195,24 @@ type GenError {
   EmptyModulePath(path: String)
   UnresolvedTypeModule(module_path: String, type_name: String)
   TypeNotFound(module_path: String, type_name: String)
+  MissingSharedState(expected_path: String)
+  MissingAppError(expected_path: String)
+  MissingHandler(message_module: String, expected_path: String)
+  NoMessageModules(shared_path: String)
+}
+
+/// A message module discovered in the shared package.
+pub type MessageModule {
+  MessageModule(
+    /// Module path relative to shared/src/, e.g. "shared/todos"
+    module_path: String,
+    /// Absolute file path
+    file_path: String,
+    /// Whether this module exports a ToServer type
+    has_to_server: Bool,
+    /// Whether this module exports a ToClient type
+    has_to_client: Bool,
+  )
 }
 
 // ---------- CLI configuration ----------
@@ -615,6 +633,28 @@ fn print_error(err: GenError) -> Nil {
       <> module_path
       <> "`"
       <> "\n  the type may be private, or the module path may be incorrect"
+    MissingSharedState(expected_path) ->
+      "missing server/shared_state.gleam: expected at `"
+      <> expected_path
+      <> "`"
+      <> "\n  create a module exporting the `SharedState` type"
+    MissingAppError(expected_path) ->
+      "missing server/app_error.gleam: expected at `"
+      <> expected_path
+      <> "`"
+      <> "\n  create a module exporting the `AppError` type"
+    MissingHandler(message_module, expected_path) ->
+      "missing handler for message module `"
+      <> message_module
+      <> "`: expected at `"
+      <> expected_path
+      <> "`"
+      <> "\n  create a handler module with a `handle` function"
+    NoMessageModules(shared_path) ->
+      "no message modules found under `"
+      <> shared_path
+      <> "`"
+      <> "\n  create a shared module exporting a `ToServer` or `ToClient` type"
   }
   io.println_error("error: " <> message)
 }
@@ -2811,5 +2851,150 @@ fn build_indexes(n n: Int, acc acc: List(Int)) -> List(Int) {
   case n {
     0 -> acc
     _ -> build_indexes(n: n - 1, acc: [n, ..acc])
+  }
+}
+
+// ---------- Message module scanner ----------
+
+/// Scan the shared package source directory for modules that export
+/// `ToServer` or `ToClient` types. These define the wire contract for
+/// the v3 message-type convention.
+///
+/// Returns `Ok(modules)` with the list of matching modules, or
+/// `Error([NoMessageModules(...)])` if no message modules are found.
+pub fn scan_message_modules(
+  shared_src shared_src: String,
+) -> Result(List(MessageModule), List(GenError)) {
+  case walk_directory(path: shared_src) {
+    Error(_) -> Error([NoMessageModules(shared_path: shared_src)])
+    Ok(files) -> {
+      let modules =
+        list.filter_map(files, fn(file_path) {
+          parse_message_module(file_path: file_path)
+        })
+      case modules {
+        [] -> Error([NoMessageModules(shared_path: shared_src)])
+        _ -> Ok(modules)
+      }
+    }
+  }
+}
+
+fn parse_message_module(
+  file_path file_path: String,
+) -> Result(MessageModule, Nil) {
+  case simplifile.read(file_path) {
+    Error(_) -> Error(Nil)
+    Ok(content) ->
+      case glance.module(content) {
+        Error(_) -> Error(Nil)
+        Ok(parsed) -> {
+          let has_to_server =
+            list.any(parsed.custom_types, fn(ct) {
+              let glance.Definition(_, t) = ct
+              t.name == "ToServer" && t.publicity == glance.Public
+            })
+          let has_to_client =
+            list.any(parsed.custom_types, fn(ct) {
+              let glance.Definition(_, t) = ct
+              t.name == "ToClient" && t.publicity == glance.Public
+            })
+          case has_to_server || has_to_client {
+            False -> Error(Nil)
+            True -> {
+              let module_path = derive_module_path(file_path: file_path)
+              Ok(MessageModule(
+                module_path: module_path,
+                file_path: file_path,
+                has_to_server: has_to_server,
+                has_to_client: has_to_client,
+              ))
+            }
+          }
+        }
+      }
+  }
+}
+
+/// Derive the Gleam module path from a file path by finding `/src/` and
+/// taking everything after it, then stripping the `.gleam` extension.
+/// E.g. `examples/todos/shared/src/shared/todos.gleam` -> `shared/todos`.
+fn derive_module_path(file_path file_path: String) -> String {
+  let without_extension = case string.ends_with(file_path, ".gleam") {
+    True ->
+      string.slice(
+        from: file_path,
+        at_index: 0,
+        length: string.length(file_path) - string.length(".gleam"),
+      )
+    False -> file_path
+  }
+  case string.split_once(without_extension, "/src/") {
+    Ok(#(_, after_src)) -> after_src
+    Error(_) -> without_extension
+  }
+}
+
+// ---------- Convention validation ----------
+
+/// Validate that the server package follows the conventions required for
+/// v3 code generation:
+/// 1. `server/shared_state.gleam` exists
+/// 2. `server/app_error.gleam` exists
+/// 3. For each message module with `has_to_server`, a handler exists at
+///    `server/handlers/<module_segment>.gleam`
+///
+/// Returns a list of errors (empty list means all conventions are satisfied).
+pub fn validate_conventions(
+  message_modules message_modules: List(MessageModule),
+  server_src server_src: String,
+) -> List(GenError) {
+  let shared_state_path = server_src <> "/server/shared_state.gleam"
+  let app_error_path = server_src <> "/server/app_error.gleam"
+
+  let shared_state_errors = case simplifile.is_file(shared_state_path) {
+    Ok(True) -> []
+    _ -> [MissingSharedState(expected_path: shared_state_path)]
+  }
+
+  let app_error_errors = case simplifile.is_file(app_error_path) {
+    Ok(True) -> []
+    _ -> [MissingAppError(expected_path: app_error_path)]
+  }
+
+  let handler_errors =
+    list.flat_map(message_modules, fn(m) {
+      case m.has_to_server {
+        False -> []
+        True -> {
+          let segment = last_module_segment(m.module_path)
+          let handler_path =
+            server_src <> "/server/handlers/" <> segment <> ".gleam"
+          case simplifile.is_file(handler_path) {
+            Ok(True) -> []
+            _ -> [
+              MissingHandler(
+                message_module: m.module_path,
+                expected_path: handler_path,
+              ),
+            ]
+          }
+        }
+      }
+    })
+
+  list.flatten([shared_state_errors, app_error_errors, handler_errors])
+}
+
+/// Extract the last path segment from a module path.
+/// E.g. `shared/todos` -> `todos`, `todos` -> `todos`.
+fn last_module_segment(module_path module_path: String) -> String {
+  case string.split(module_path, "/") {
+    [] -> module_path
+    segments ->
+      case list.last(segments) {
+        Ok(last) -> last
+        Error(_) -> module_path
+      }
   }
 }
