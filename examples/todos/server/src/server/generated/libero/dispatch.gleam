@@ -18,9 +18,7 @@ pub fn handle(
   let Nil = ensure_atoms()
   case wire.decode_call(data) {
     Ok(#("shared/todos", msg)) ->
-      dispatch(state, fn() {
-        todos_handler.handle(msg: wire.coerce(msg), state:)
-      })
+      dispatch(state, fn() { todos_handler.handle(msg: wire.coerce(msg), state:) })
     Ok(#(name, _)) ->
       #(wire.encode(Error(UnknownFunction(name))), None, state)
     Error(_) ->
