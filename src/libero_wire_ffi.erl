@@ -1,9 +1,13 @@
 -module(libero_wire_ffi).
 -export([decode_call/1]).
 
-%% Decode an ETF binary, validate it's a {Binary, List} call envelope,
-%% and return a Gleam-shaped Result: {ok, {Name, Args}} or
+%% Decode an ETF binary, validate it's a {Binary, Value} call envelope,
+%% and return a Gleam-shaped Result: {ok, {Name, Value}} or
 %% {error, {decode_error, Message}}.
+%%
+%% The v3 wire envelope is {module_name_binary, toserver_value} - a 2-tuple
+%% where the second element is a single value (not a list). This allows
+%% the dispatch to coerce the value directly to the typed ToServer message.
 %%
 %% Note: binary_to_term/2 is called with [safe] to prevent atom
 %% exhaustion attacks. All legitimate constructor atoms are pre-
@@ -11,10 +15,10 @@
 %% the first RPC arrives.
 decode_call(Bin) when is_binary(Bin) ->
     try erlang:binary_to_term(Bin, [safe]) of
-        {Name, Args} when is_binary(Name), is_list(Args) ->
-            {ok, {Name, Args}};
+        {Module, Value} when is_binary(Module) ->
+            {ok, {Module, Value}};
         _ ->
-            {error, {decode_error, <<"invalid call envelope: expected {binary, list}">>}}
+            {error, {decode_error, <<"invalid call envelope: expected {binary, value} tuple">>}}
     catch
         _:_ ->
             {error, {decode_error, <<"invalid ETF binary">>}}

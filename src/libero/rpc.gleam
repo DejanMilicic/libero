@@ -43,6 +43,34 @@ pub fn call_by_name(
   })
 }
 
+/// Send a typed ToServer message to the server via WebSocket.
+/// Used by generated client send stubs for v3 message modules.
+///
+/// The `module` parameter identifies which shared module the message
+/// belongs to (e.g. `"shared/todos"`). The server dispatch routes
+/// by this name to the correct handler.
+pub fn send(
+  url url: String,
+  module module: String,
+  msg msg: a,
+) -> Effect(msg) {
+  effect.from(fn(_dispatch) {
+    ffi_send(url:, module:, msg:)
+  })
+}
+
+@external(javascript, "./rpc_ffi.mjs", "send")
+fn ffi_send(
+  url url: String,
+  module module: String,
+  msg msg: a,
+) -> Nil {
+  let _ = url
+  let _ = module
+  let _ = msg
+  panic as "libero/rpc is a JavaScript-only module, unreachable on Erlang target"
+}
+
 // The externals below have Gleam fallback bodies that panic. On the
 // JavaScript target the body is ignored and the FFI implementation
 // in rpc_ffi.mjs is called. On the Erlang target the body is used,
@@ -70,3 +98,4 @@ fn unsafe_coerce(value: Dynamic) -> a {
   let _ = value
   panic as "libero/rpc is a JavaScript-only module, unreachable on Erlang target"
 }
+

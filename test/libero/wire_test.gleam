@@ -57,24 +57,27 @@ pub fn encode_error_test() {
   let assert True = bit_array_byte_size(bits) > 0
 }
 
-// ---------- Call envelope decoding ----------
+// ---------- Call envelope decoding (v3 format: {module, value}) ----------
 
-pub fn decode_call_empty_args_test() {
-  let envelope = encode_call_envelope("records.list", [])
-  let assert Ok(#("records.list", args)) = wire.decode_call(envelope)
-  let assert 0 = list_length(args)
+pub fn decode_call_with_nil_value_test() {
+  // v3 envelope: {<<"shared/records">>, nil}
+  let envelope = encode_call_envelope("shared/records", coerce(Nil))
+  let assert Ok(#("shared/records", _value)) = wire.decode_call(envelope)
 }
 
-pub fn decode_call_with_int_arg_test() {
-  let envelope = encode_call_envelope("fizzbuzz.classify", [coerce(15)])
-  let assert Ok(#("fizzbuzz.classify", args)) = wire.decode_call(envelope)
-  let assert 1 = list_length(args)
+pub fn decode_call_with_int_value_test() {
+  // v3 envelope: {<<"shared/fizzbuzz">>, 15}
+  let envelope = encode_call_envelope("shared/fizzbuzz", coerce(15))
+  let assert Ok(#("shared/fizzbuzz", value)) = wire.decode_call(envelope)
+  let result: Int = unsafe_coerce(value)
+  let assert 15 = result
 }
 
-pub fn decode_call_with_string_arg_test() {
-  let envelope = encode_call_envelope("records.save", [coerce("hello")])
-  let assert Ok(#("records.save", [arg])) = wire.decode_call(envelope)
-  let result: String = unsafe_coerce(arg)
+pub fn decode_call_with_string_value_test() {
+  // v3 envelope: {<<"shared/records">>, "hello"}
+  let envelope = encode_call_envelope("shared/records", coerce("hello"))
+  let assert Ok(#("shared/records", value)) = wire.decode_call(envelope)
+  let result: String = unsafe_coerce(value)
   let assert "hello" = result
 }
 
@@ -84,10 +87,10 @@ pub fn decode_call_invalid_binary_test() {
 }
 
 pub fn decode_call_wrong_shape_test() {
-  // Encode a plain integer instead of a {name, args} tuple
+  // Encode a plain integer instead of a {module, value} tuple
   let bad = ffi_encode(coerce(42))
   let assert Error(wire.DecodeError(
-    message: "invalid call envelope: expected {binary, list}",
+    message: "invalid call envelope: expected {binary, value} tuple",
   )) = wire.decode_call(bad)
 }
 
@@ -137,19 +140,8 @@ pub fn roundtrip_tuple_via_decode_test() {
 
 // ---------- Helpers ----------
 
-fn encode_call_envelope(name: String, args: List(Dynamic)) -> BitArray {
-  ffi_encode(coerce(#(name, args)))
-}
-
-fn list_length(items: List(a)) -> Int {
-  do_length(items, 0)
-}
-
-fn do_length(items: List(a), acc: Int) -> Int {
-  case items {
-    [] -> acc
-    [_, ..rest] -> do_length(rest, acc + 1)
-  }
+fn encode_call_envelope(module: String, value: Dynamic) -> BitArray {
+  ffi_encode(coerce(#(module, value)))
 }
 
 @external(erlang, "libero_ffi", "encode")

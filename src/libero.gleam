@@ -255,6 +255,16 @@ type Config {
     /// can check this file for staleness instead of guessing which
     /// files to watch.
     inputs_manifest: option.Option(String),
+    /// v3: Path to the shared package src directory (e.g. "../shared/src/shared").
+    /// Used by scan_message_modules and walk_message_registry_types.
+    shared_src: option.Option(String),
+    /// v3: Path to the server package src directory (e.g. "src").
+    /// Used by validate_conventions and deriving server_generated.
+    server_src: option.Option(String),
+    /// v3: Where to write server-side generated dispatch (e.g. "src/server/generated/libero").
+    v3_server_generated: String,
+    /// v3: Where to write client-side generated send functions (e.g. "../client/src/client/generated/libero").
+    v3_client_generated: String,
   )
 }
 
@@ -310,11 +320,16 @@ fn parse_config() -> Config {
     Error(Nil) -> "../client"
   }
   let write_inputs = list.contains(args, "--write-inputs")
+  // v3 flags: --shared= and --server= enable v3 message-module mode.
+  let shared_root = find_flag(args: args, name: "--shared")
+  let server_root = find_flag(args: args, name: "--server")
   build_config(
     ws_mode: ws_mode,
     namespace: namespace,
     client_root: client_root,
     write_inputs: write_inputs,
+    shared_root: shared_root,
+    server_root: server_root,
   )
 }
 
@@ -328,6 +343,8 @@ fn build_config(
   namespace namespace: option.Option(String),
   client_root client_root: String,
   write_inputs write_inputs: Bool,
+  shared_root shared_root: Result(String, Nil),
+  server_root server_root: Result(String, Nil),
 ) -> Config {
   // In the final JS bundle, registration files land at:
   //   <bundle_root>/<client_pkg>/client/generated/libero/[<ns>/]rpc_register_ffi.mjs
@@ -385,6 +402,27 @@ fn build_config(
       }
     False -> None
   }
+  // v3 paths: derived from --shared and --server flags.
+  // shared_src = <shared_root>/src/shared  (the shared package's module src dir)
+  // server_src = <server_root>/src         (the server package's src dir)
+  // v3_server_generated and v3_client_generated are where dispatch.gleam and
+  // client send stubs are written, matching the convention used by the consumer.
+  let shared_src = case shared_root {
+    Ok(root) -> Some(root <> "/src/shared")
+    Error(_) -> None
+  }
+  let server_src = case server_root {
+    Ok(root) -> Some(root <> "/src")
+    Error(_) -> None
+  }
+  let v3_server_generated = case namespace {
+    None -> "src/server/generated/libero"
+    Some(ns) -> "src/server/generated/libero/" <> ns
+  }
+  let v3_client_generated = case namespace {
+    None -> client_root <> "/src/client/generated/libero"
+    Some(ns) -> client_root <> "/src/client/generated/libero/" <> ns
+  }
   Config(
     ws_mode: ws_mode,
     namespace: namespace,
@@ -399,6 +437,10 @@ fn build_config(
     register_ffi_output: register_ffi_output,
     register_relpath_prefix: register_relpath_prefix,
     inputs_manifest: inputs_manifest,
+    shared_src: shared_src,
+    server_src: server_src,
+    v3_server_generated: v3_server_generated,
+    v3_client_generated: v3_client_generated,
   )
 }
 
@@ -415,23 +457,154 @@ fn find_flag(args args: List(String), name name: String) -> Result(String, Nil) 
 pub fn main() -> Nil {
   trap_signals()
   let config = parse_config()
-  io.println("libero: scanning " <> config.scan_root)
 
-  case run(config) {
-    Ok(count) -> {
-      io.println(
-        "libero: done. generated " <> int.to_string(count) <> " RPC stubs",
-      )
-      let _halt = halt(0)
+  // v3 mode is enabled when --shared is provided. In v3 mode, libero
+  // scans shared message modules instead of server @rpc annotations.
+  case config.shared_src {
+    Some(shared_src) -> {
+      io.println("libero: v3 mode — scanning shared message modules at " <> shared_src)
+      case run_v3(config: config, shared_src: shared_src) {
+        Ok(count) -> {
+          io.println(
+            "libero: done. processed "
+            <> int.to_string(count)
+            <> " message module(s)",
+          )
+          let _halt = halt(0)
+        }
+        Error(errors) -> {
+          list.each(errors, print_error)
+          let count = int.to_string(list.length(errors))
+          io.println_error("")
+          io.println_error("libero: " <> count <> " error(s), no files generated")
+          let _halt = halt(1)
+        }
+      }
     }
-    Error(errors) -> {
-      list.each(errors, print_error)
-      let count = int.to_string(list.length(errors))
-      io.println_error("")
-      io.println_error("libero: " <> count <> " error(s), no files generated")
-      let _halt = halt(1)
+    None -> {
+      io.println("libero: scanning " <> config.scan_root)
+      case run(config) {
+        Ok(count) -> {
+          io.println(
+            "libero: done. generated "
+            <> int.to_string(count)
+            <> " RPC stubs",
+          )
+          let _halt = halt(0)
+        }
+        Error(errors) -> {
+          list.each(errors, print_error)
+          let count = int.to_string(list.length(errors))
+          io.println_error("")
+          io.println_error("libero: " <> count <> " error(s), no files generated")
+          let _halt = halt(1)
+        }
+      }
     }
   }
+}
+
+/// v3 pipeline: scan shared message modules, validate conventions, walk
+/// types, and generate dispatch + client send stubs + register + atoms.
+fn run_v3(
+  config config: Config,
+  shared_src shared_src: String,
+) -> Result(Int, List(GenError)) {
+  use message_modules <- result.try(
+    scan_message_modules(shared_src: shared_src),
+  )
+  io.println(
+    "libero: found "
+    <> int.to_string(list.length(message_modules))
+    <> " message module(s)",
+  )
+
+  let server_src = option.unwrap(config.server_src, "src")
+  let validation_errors =
+    validate_conventions(message_modules: message_modules, server_src: server_src)
+  case validation_errors {
+    [_, ..] -> Error(validation_errors)
+    [] -> {
+      // Build module_files dict for the type walker from the shared src directory.
+      let module_files = build_module_files(dir: shared_src)
+
+      use discovered <- result.try(
+        walk_message_registry_types(
+          message_modules: message_modules,
+          module_files: module_files,
+        ),
+      )
+      io.println(
+        "libero: discovered "
+        <> int.to_string(list.length(discovered))
+        <> " type variant(s) for registration",
+      )
+
+      // Generate server dispatch module.
+      use _ <- result.try(
+        write_v3_dispatch(
+          message_modules: message_modules,
+          server_generated: config.v3_server_generated,
+        )
+        |> result.map_error(fn(e) { [e] }),
+      )
+
+      // Generate client send stubs.
+      use _ <- result.try(
+        write_v3_send_functions(
+          message_modules: message_modules,
+          client_generated: config.v3_client_generated,
+        ),
+      )
+
+      // Generate WebSocket config module.
+      use _ <- result.try(
+        write_config(config: config) |> result.map_error(fn(e) { [e] }),
+      )
+
+      // Generate client-side type registration (gleam + mjs).
+      use _ <- result.try(
+        write_v3_register(config: config, discovered: discovered),
+      )
+
+      // Generate Erlang atom pre-registration module.
+      use _ <- result.try(
+        write_atoms(config: config, discovered: discovered)
+        |> result.map_error(fn(e) { [e] }),
+      )
+
+      Ok(list.length(message_modules))
+    }
+  }
+}
+
+/// Build a Dict(module_path, file_path) by walking a directory.
+/// The module path is derived by stripping up to and including "/src/"
+/// and dropping the ".gleam" extension.
+fn build_module_files(dir dir: String) -> Dict(String, String) {
+  case walk_directory(path: dir) {
+    Error(_) -> dict.new()
+    Ok(files) ->
+      list.fold(files, dict.new(), fn(acc, file_path) {
+        let module_path = derive_module_path(file_path: file_path)
+        dict.insert(acc, module_path, file_path)
+      })
+  }
+}
+
+/// Write the client-side type registration files for v3 (gleam wrapper + mjs FFI).
+/// Uses the pre-discovered variant list instead of walking from @rpc signatures.
+fn write_v3_register(
+  config config: Config,
+  discovered discovered: List(DiscoveredVariant),
+) -> Result(Nil, List(GenError)) {
+  use _ <- result.try(
+    write_register_gleam(config:) |> result.map_error(fn(e) { [e] }),
+  )
+  use _ <- result.try(
+    write_register_ffi(config:, discovered:) |> result.map_error(fn(e) { [e] }),
+  )
+  Ok(Nil)
 }
 
 /// Runs the whole pipeline. Returns Ok(count) on success with the
@@ -3075,15 +3248,20 @@ pub fn write_v3_dispatch(
       <> "_handler.handle(msg: wire.coerce(msg), state:) })"
     })
 
-  let fallthrough_arm =
-    "    _ ->\n      wire.encode_error(wire.UnknownFunction)"
+  let ok_unknown_arm =
+    "    Ok(#(name, _)) ->\n      #(wire.encode(Error(UnknownFunction(name))), None)"
 
-  let all_arms = list.append(case_arms, [fallthrough_arm])
+  let error_arm =
+    "    Error(_) ->\n      #(wire.encode(Error(MalformedRequest)), None)"
+
+  let all_arms = list.flatten([case_arms, [ok_unknown_arm, error_arm]])
 
   let content =
     "//// Code generated by libero. DO NOT EDIT.
 
-import gleam/dynamic.{type Dynamic}
+import gleam/option.{type Option, None, Some}
+import libero/error.{type PanicInfo, InternalError, MalformedRequest, UnknownFunction}
+import libero/trace
 import libero/wire
 import server/app_error.{type AppError}
 import server/shared_state.{type SharedState}
@@ -3091,7 +3269,10 @@ import server/shared_state.{type SharedState}
     <> string.join(handler_imports, "\n")
     <> "
 
-pub fn handle(state state: SharedState, data data: Dynamic) -> Dynamic {
+pub fn handle(
+  state state: SharedState,
+  data data: BitArray,
+) -> #(BitArray, Option(PanicInfo)) {
   case wire.decode_call(data) {
 "
     <> string.join(all_arms, "\n")
@@ -3101,8 +3282,18 @@ pub fn handle(state state: SharedState, data data: Dynamic) -> Dynamic {
 
 fn dispatch(
   call call: fn() -> Result(a, AppError),
-) -> Dynamic {
-  wire.encode_result(call())
+) -> #(BitArray, Option(PanicInfo)) {
+  case trace.try_call(call) {
+    Ok(Ok(value)) -> #(wire.encode(Ok(value)), None)
+    Ok(Error(app_err)) -> #(wire.encode(Error(error.AppError(app_err))), None)
+    Error(reason) -> {
+      let trace_id = trace.new_trace_id()
+      #(
+        wire.encode(Error(InternalError(trace_id, \"Internal server error\"))),
+        Some(error.PanicInfo(trace_id:, fn_name: \"dispatch\", reason:)),
+      )
+    }
+  }
 }
 "
 

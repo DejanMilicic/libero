@@ -6,10 +6,11 @@
 //// to reconstruct the original terms. No manual walk or rebuild is
 //// needed because ETF is the BEAM's native serialization format.
 ////
-//// **Wire shape:**
-//// - The call envelope is `{fn_name_binary, args_list}` - a 2-tuple
-////   where the first element is a UTF-8 binary (Gleam String) and the
-////   second is a list of arbitrary terms.
+//// **Wire shape (v3):**
+//// - The call envelope is `{module_name_binary, toserver_value}` - a
+////   2-tuple where the first element is a UTF-8 binary (Gleam String)
+////   naming the shared module, and the second is the typed ToServer
+////   value serialized as a native ETF term.
 //// - The response is the Gleam value directly (e.g. `Ok(value)` or
 ////   `Error(MalformedRequest)`), serialized as ETF.
 ////
@@ -84,23 +85,23 @@ pub type DecodeError {
   DecodeError(message: String)
 }
 
-/// Parse a `{<<"fn_name">>, [arg1, arg2, ...]}` tuple from an ETF binary.
-/// Returns the function name and args list. Since `binary_to_term`
-/// returns real Erlang terms, no rebuild step is needed - atoms are
-/// atoms, tuples are tuples, maps are maps.
+/// Parse a `{<<"module_name">>, toserver_value}` tuple from an ETF binary.
+/// Returns the module name and the raw Dynamic value to be coerced.
+/// Since `binary_to_term` returns real Erlang terms, no rebuild step
+/// is needed - atoms are atoms, tuples are tuples, maps are maps.
 ///
 /// This is specifically for RPC call envelopes. For decoding
 /// arbitrary values, use `decode`.
 pub fn decode_call(
   data: BitArray,
-) -> Result(#(String, List(Dynamic)), DecodeError) {
+) -> Result(#(String, Dynamic), DecodeError) {
   ffi_decode_call(data)
 }
 
 @external(erlang, "libero_wire_ffi", "decode_call")
 fn ffi_decode_call(
   data: BitArray,
-) -> Result(#(String, List(Dynamic)), DecodeError) {
+) -> Result(#(String, Dynamic), DecodeError) {
   // JS fallback. `decode_call` is specifically for parsing incoming
   // RPC call envelopes, which only the server does. JavaScript
   // consumers never call this — they call the generated client
@@ -108,4 +109,26 @@ fn ffi_decode_call(
   // helper in rpc_ffi.mjs, not via this Gleam-level function.
   let _ = data
   panic as "libero/wire.decode_call is a server-side function, unreachable on JavaScript target"
+}
+
+// ---------- Call envelope encoder ----------
+
+/// Encode a v3 call envelope: `{module_name, msg}` as ETF binary.
+/// Used by generated client send functions to pack a ToServer value
+/// for transport to the server.
+pub fn encode_call(module module: String, msg msg: a) -> BitArray {
+  encode(#(module, msg))
+}
+
+// ---------- Coerce ----------
+
+/// Cast a Dynamic value to any type.
+/// Used by generated server dispatch code to coerce the decoded
+/// ToServer value to its typed form. Safe when client and server are
+/// built from the same source (the generator guarantees the types match).
+@external(erlang, "libero_ffi", "identity")
+@external(javascript, "./rpc_ffi.mjs", "identity")
+pub fn coerce(value: dynamic.Dynamic) -> a {
+  let _ = value
+  panic as "unreachable"
 }

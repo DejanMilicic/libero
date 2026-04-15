@@ -7,7 +7,9 @@
 %% Erlang term shapes.
 
 -module(libero_ffi).
--export([try_call/1, encode/1, decode/1, decode_safe/1, trap_signals/0]).
+-export([try_call/1, encode/1, decode/1, decode_safe/1, identity/1, trap_signals/0]).
+
+identity(X) -> X.
 
 encode(Term) ->
     erlang:term_to_binary(Term).

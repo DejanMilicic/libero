@@ -56,9 +56,10 @@ pub fn internal_error_roundtrips_through_wire_test() {
       message: "Something went wrong, please try again.",
     ))
   let encoded = wire.encode(value)
-  // Wrap in a call envelope and decode to verify structure survives
-  let envelope = ffi_encode(coerce(#("test", [coerce(encoded)])))
-  let assert Ok(#("test", [rebuilt])) = wire.decode_call(envelope)
+  // Wrap in a v3 call envelope {module, value} and decode to verify structure survives.
+  // The v3 envelope is a 2-tuple {binary, value} where value is the typed message.
+  let envelope = ffi_encode(coerce(#("shared/test", coerce(encoded))))
+  let assert Ok(#("shared/test", rebuilt)) = wire.decode_call(envelope)
   let decoded: BitArray = unsafe_coerce(rebuilt)
   let assert True = bit_array_byte_size(decoded) > 0
 }

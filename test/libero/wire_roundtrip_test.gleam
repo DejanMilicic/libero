@@ -1,7 +1,7 @@
 /// Exhaustive wire codec roundtrip tests (ETF).
 ///
-/// Each test encodes a Gleam value, wraps it in a call envelope
-/// {<<"test">>, [value]}, decodes it back via wire.decode_call, and
+/// Each test encodes a Gleam value, wraps it in a v3 call envelope
+/// {<<"shared/test">>, value}, decodes it back via wire.decode_call, and
 /// asserts the original value survived. Since ETF preserves Erlang's
 /// type structure, tuples roundtrip correctly (unlike JSON).
 import gleam/dict
@@ -13,10 +13,12 @@ import libero/wire
 // Helpers
 // ============================================================================
 
-/// Encode a value, wrap it as an RPC call arg, decode it back.
+/// Encode a value, wrap it in a v3 call envelope, decode it back.
+/// The v3 envelope is {<<"shared/test">>, value} - a 2-tuple where
+/// the second element is the typed message value (not a list of args).
 fn roundtrip(value: a) -> Dynamic {
-  let envelope = ffi_encode(coerce(#("test", [coerce(value)])))
-  let assert Ok(#("test", [rebuilt])) = wire.decode_call(envelope)
+  let envelope = ffi_encode(coerce(#("shared/test", coerce(value))))
+  let assert Ok(#("shared/test", rebuilt)) = wire.decode_call(envelope)
   rebuilt
 }
 

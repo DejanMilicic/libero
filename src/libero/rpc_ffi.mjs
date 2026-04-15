@@ -870,3 +870,29 @@ export function call(url, name, args, onResponse) {
     pendingSends.push(payload);
   }
 }
+
+// v3 fire-and-forget send: encode {module, msg} envelope and send.
+// No response callback - the server pushes ToClient updates via a
+// separate channel. This is the one-way send used by v3 message modules.
+export function send(url, module, msg) {
+  ensureSocket(url);
+  const payload = encode_call(module, msg);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(payload);
+  } else {
+    pendingSends.push(payload);
+  }
+}
+
+// Encode a v3 call envelope: {module_name, msg} as ETF binary.
+// Symmetric with the server-side wire.encode_call.
+export function encode_call(module, msg) {
+  const encoder = new ETFEncoder();
+  encoder.writeUint8(131); // ETF version byte
+  // Envelope: {<<"module_name">>, msg_value}
+  encoder.writeUint8(104); // SMALL_TUPLE_EXT
+  encoder.writeUint8(2);   // arity 2
+  encoder.encodeBinary(module);
+  encoder.encodeTerm(msg);
+  return encoder.result();
+}
