@@ -20,7 +20,7 @@
 //// libero's own ETF encoder/decoder in `rpc_ffi.mjs`, which requires
 //// that any custom-type constructors in the value have been registered
 //// via `register_all()` at boot (libero's generator emits that
-//// registration for every type reachable from the `@rpc` type graph).
+//// registration for every type reachable from the ToServer/ToClient type graph).
 
 import gleam/dynamic.{type Dynamic}
 
@@ -46,7 +46,7 @@ pub fn encode(value: a) -> BitArray
 /// specifically, use `decode_call` instead.
 ///
 /// Any custom types in the decoded value must be reachable from the
-/// `@rpc` type graph so their constructors are registered with the
+/// ToServer/ToClient type graph so their constructors are registered with the
 /// JavaScript codec (via `register_all()` at boot). On Erlang this
 /// is automatic because atoms are pre-registered by the generated
 /// `rpc_atoms` module.

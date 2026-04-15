@@ -717,7 +717,8 @@ try {
 // before the socket's open event are queued and flushed once it opens.
 
 let ws = null;
-let pendingSends = [];
+let pendingSends = [];    // [{payload, callback}]
+let responseCallbacks = [];
 
 function ensureSocket(url) {
   if (ws !== null) return;
@@ -726,12 +727,23 @@ function ensureSocket(url) {
   ws.binaryType = "arraybuffer";
 
   ws.addEventListener("open", () => {
-    for (const payload of pendingSends) ws.send(payload);
+    for (const { payload, callback } of pendingSends) {
+      ws.send(payload);
+      responseCallbacks.push(callback);
+    }
     pendingSends = [];
+  });
+
+  ws.addEventListener("message", (event) => {
+    const decoded = decode_value(new Uint8Array(event.data));
+    const callback = responseCallbacks.shift();
+    if (callback) callback(decoded);
   });
 
   ws.addEventListener("close", () => {
     ws = null;
+    pendingSends = [];
+    responseCallbacks = [];
   });
 
   ws.addEventListener("error", () => {
@@ -742,16 +754,16 @@ function ensureSocket(url) {
   });
 }
 
-// Fire-and-forget send: encode {module, msg} envelope and send.
-// No response callback - the server pushes ToClient updates via a
-// separate channel. This is the one-way send used by message modules.
-export function send(url, module, msg) {
+// Send a message and queue a callback for the server's response.
+// Responses are matched to sends in FIFO order.
+export function send(url, module, msg, callback) {
   ensureSocket(url);
   const payload = encode_call(module, msg);
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(payload);
+    responseCallbacks.push(callback);
   } else {
-    pendingSends.push(payload);
+    pendingSends.push({ payload, callback });
   }
 }
 

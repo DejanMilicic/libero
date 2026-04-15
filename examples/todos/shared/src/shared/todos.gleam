@@ -23,5 +23,5 @@ pub type ToClient {
   Toggled(Todo)
   Deleted(id: Int)
   AllLoaded(List(Todo))
-  Error(TodoError)
+  TodoFailed(TodoError)
 }

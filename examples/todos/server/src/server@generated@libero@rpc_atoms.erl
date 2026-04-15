@@ -30,6 +30,7 @@ do_ensure() ->
         <<"delete">>,
         <<"deleted">>,
         <<"error">>,
+        <<"todo_failed">>,
         <<"false">>,
         <<"internal_error">>,
         <<"load_all">>,

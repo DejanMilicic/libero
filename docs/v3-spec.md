@@ -64,7 +64,8 @@ Flags:
 - `--client`: path to client package (default: `../client`)
 - `--ws-url` or `--ws-path`: WebSocket URL configuration (one required, mutually exclusive)
 
-Removed from v2: `--namespace`, `--write-inputs`.
+Retained from v2: `--namespace` (optional, scopes generated output paths).
+Removed from v2: `--write-inputs`.
 
 ### Pipeline Steps
 
@@ -282,7 +283,7 @@ Returns the module name and the raw `ToServer` value as Dynamic (not a list of a
 - Per-function stub generation: `render_stub_fn`, `write_stub_files`
 - String-based dispatch: wire name matching, per-function case arms with inject calls
 - `call_by_name` in `libero/rpc`
-- `--namespace` and `--write-inputs` CLI handling
+- `--write-inputs` CLI handling
 
 ## Example Project: Todos
 

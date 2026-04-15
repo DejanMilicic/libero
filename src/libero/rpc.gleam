@@ -1,32 +1,38 @@
 //// Client-side send machinery.
 ////
 //// `send` is the entry point used by libero-generated client stubs.
-//// It takes the WebSocket URL, the module name, and the typed ToServer
-//// message to deliver.
+//// It takes the WebSocket URL, the module name, the typed ToServer
+//// message, and a callback to wrap the server's response into a
+//// Lustre Msg.
 ////
 //// The JS FFI (rpc_ffi.mjs) opens the WebSocket lazily on first call
 //// and caches the connection. Sends issued before the socket is open
-//// are queued and flushed on the open event.
+//// are queued and flushed on the open event. Responses are matched
+//// to sends in FIFO order.
 ////
 //// Developers don't usually call this module directly. They import
 //// the per-module stubs the libero generator writes into their
 //// client package, and those stubs delegate here.
 
+import gleam/dynamic.{type Dynamic}
 import lustre/effect.{type Effect}
 
-/// Send a typed ToServer message to the server via WebSocket.
-/// Used by generated client send stubs.
+/// Send a typed ToServer message to the server via WebSocket and
+/// deliver the server's response back to the Lustre update loop.
 ///
-/// The `module` parameter identifies which shared module the message
-/// belongs to (e.g. `"shared/todos"`). The server dispatch routes
-/// by this name to the correct handler.
+/// The `on_response` callback wraps the decoded response (a Dynamic
+/// value reconstructed from ETF) into a Lustre Msg so it can be
+/// dispatched through `update`.
 pub fn send(
   url url: String,
   module module: String,
   msg msg: a,
+  on_response on_response: fn(Dynamic) -> msg,
 ) -> Effect(msg) {
-  effect.from(fn(_dispatch) {
-    ffi_send(url:, module:, msg:)
+  effect.from(fn(dispatch) {
+    ffi_send(url:, module:, msg:, on_response: fn(raw) {
+      dispatch(on_response(raw))
+    })
   })
 }
 
@@ -35,9 +41,11 @@ fn ffi_send(
   url url: String,
   module module: String,
   msg msg: a,
+  on_response on_response: fn(Dynamic) -> Nil,
 ) -> Nil {
   let _ = url
   let _ = module
   let _ = msg
+  let _ = on_response
   panic as "libero/rpc is a JavaScript-only module, unreachable on Erlang target"
 }

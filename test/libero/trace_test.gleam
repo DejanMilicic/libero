@@ -1,7 +1,7 @@
 //// Tests for libero/trace - the panic-catching + trace_id primitives.
 ////
 //// These are the building blocks behind the generated dispatch's
-//// panic handling: every /// @rpc call runs inside try_call, and a
+//// panic handling: every dispatch call runs inside try_call, and a
 //// panic surfaces to the consumer as an InternalError envelope
 //// tagged with a fresh trace_id.
 

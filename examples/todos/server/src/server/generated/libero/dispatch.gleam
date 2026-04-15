@@ -8,31 +8,41 @@ import server/app_error.{type AppError}
 import server/shared_state.{type SharedState}
 import server/handlers/todos as todos_handler
 
+@external(erlang, "server@generated@libero@rpc_atoms", "ensure")
+fn ensure_atoms() -> Nil
+
 pub fn handle(
   state state: SharedState,
   data data: BitArray,
-) -> #(BitArray, Option(PanicInfo)) {
+) -> #(BitArray, Option(PanicInfo), SharedState) {
+  let Nil = ensure_atoms()
   case wire.decode_call(data) {
     Ok(#("shared/todos", msg)) ->
-      dispatch(fn() { todos_handler.handle(msg: wire.coerce(msg), state:) })
+      dispatch(state, fn() {
+        todos_handler.handle(msg: wire.coerce(msg), state:)
+      })
     Ok(#(name, _)) ->
-      #(wire.encode(Error(UnknownFunction(name))), None)
+      #(wire.encode(Error(UnknownFunction(name))), None, state)
     Error(_) ->
-      #(wire.encode(Error(MalformedRequest)), None)
+      #(wire.encode(Error(MalformedRequest)), None, state)
   }
 }
 
 fn dispatch(
-  call call: fn() -> Result(a, AppError),
-) -> #(BitArray, Option(PanicInfo)) {
+  state state: SharedState,
+  call call: fn() -> Result(#(a, SharedState), AppError),
+) -> #(BitArray, Option(PanicInfo), SharedState) {
   case trace.try_call(call) {
-    Ok(Ok(value)) -> #(wire.encode(Ok(value)), None)
-    Ok(Error(app_err)) -> #(wire.encode(Error(error.AppError(app_err))), None)
+    Ok(Ok(#(value, new_state))) ->
+      #(wire.encode(Ok(value)), None, new_state)
+    Ok(Error(app_err)) ->
+      #(wire.encode(Error(error.AppError(app_err))), None, state)
     Error(reason) -> {
       let trace_id = trace.new_trace_id()
       #(
         wire.encode(Error(InternalError(trace_id, "Internal server error"))),
         Some(error.PanicInfo(trace_id:, fn_name: "dispatch", reason:)),
+        state,
       )
     }
   }
