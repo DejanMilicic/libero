@@ -365,6 +365,7 @@ fn run_v3(
         write_v3_dispatch(
           message_modules: message_modules,
           server_generated: config.v3_server_generated,
+          atoms_module: config.atoms_module,
         )
         |> result.map_error(fn(e) { [e] }),
       )
@@ -1536,6 +1537,7 @@ pub fn walk_message_registry_types(
 pub fn write_v3_dispatch(
   message_modules message_modules: List(MessageModule),
   server_generated server_generated: String,
+  atoms_module atoms_module: String,
 ) -> Result(Nil, GenError) {
   // Only modules with ToServer need dispatch arms.
   let to_server_modules =
@@ -1555,16 +1557,16 @@ pub fn write_v3_dispatch(
       let segment = last_module_segment(module_path: m.module_path)
       "    Ok(#(\""
       <> m.module_path
-      <> "\", msg)) ->\n      dispatch(fn() { "
+      <> "\", msg)) ->\n      dispatch(state, fn() { "
       <> segment
       <> "_handler.handle(msg: wire.coerce(msg), state:) })"
     })
 
   let ok_unknown_arm =
-    "    Ok(#(name, _)) ->\n      #(wire.encode(Error(UnknownFunction(name))), None)"
+    "    Ok(#(name, _)) ->\n      #(wire.encode(Error(UnknownFunction(name))), None, state)"
 
   let error_arm =
-    "    Error(_) ->\n      #(wire.encode(Error(MalformedRequest)), None)"
+    "    Error(_) ->\n      #(wire.encode(Error(MalformedRequest)), None, state)"
 
   let all_arms = list.flatten([case_arms, [ok_unknown_arm, error_arm]])
 
@@ -1581,10 +1583,16 @@ import server/shared_state.{type SharedState}
     <> string.join(handler_imports, "\n")
     <> "
 
+@external(erlang, \""
+    <> atoms_module
+    <> "\", \"ensure\")
+fn ensure_atoms() -> Nil
+
 pub fn handle(
   state state: SharedState,
   data data: BitArray,
-) -> #(BitArray, Option(PanicInfo)) {
+) -> #(BitArray, Option(PanicInfo), SharedState) {
+  let Nil = ensure_atoms()
   case wire.decode_call(data) {
 "
     <> string.join(all_arms, "\n")
@@ -1593,16 +1601,20 @@ pub fn handle(
 }
 
 fn dispatch(
-  call call: fn() -> Result(a, AppError),
-) -> #(BitArray, Option(PanicInfo)) {
+  state state: SharedState,
+  call call: fn() -> Result(#(a, SharedState), AppError),
+) -> #(BitArray, Option(PanicInfo), SharedState) {
   case trace.try_call(call) {
-    Ok(Ok(value)) -> #(wire.encode(Ok(value)), None)
-    Ok(Error(app_err)) -> #(wire.encode(Error(error.AppError(app_err))), None)
+    Ok(Ok(#(value, new_state))) ->
+      #(wire.encode(Ok(value)), None, new_state)
+    Ok(Error(app_err)) ->
+      #(wire.encode(Error(error.AppError(app_err))), None, state)
     Error(reason) -> {
       let trace_id = trace.new_trace_id()
       #(
         wire.encode(Error(InternalError(trace_id, \"Internal server error\"))),
         Some(error.PanicInfo(trace_id:, fn_name: \"dispatch\", reason:)),
+        state,
       )
     }
   }
