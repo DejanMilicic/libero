@@ -3,7 +3,7 @@
 
 import gleam/dict
 import gleam/list
-import libero
+import libero/scanner
 import simplifile
 
 /// scan_message_modules should skip a "generated" subdirectory.
@@ -25,7 +25,7 @@ pub fn scan_skips_generated_directory_test() {
     )
 
   let assert Ok(#(modules, _files)) =
-    libero.scan_message_modules(shared_src:)
+    scanner.scan_message_modules(shared_src:)
   // Should only find msgs, not decoy
   let assert 1 = list.length(modules)
   let assert [m] = modules
@@ -52,7 +52,7 @@ pub fn scan_skips_symlinks_test() {
     simplifile.create_symlink("../..", shared_src <> "/loop")
 
   let assert Ok(#(modules, _files)) =
-    libero.scan_message_modules(shared_src:)
+    scanner.scan_message_modules(shared_src:)
   let assert 1 = list.length(modules)
 
   // Cleanup
@@ -77,7 +77,7 @@ pub fn scan_populates_module_files_for_all_gleam_files_test() {
     )
 
   let assert Ok(#(_modules, files)) =
-    libero.scan_message_modules(shared_src:)
+    scanner.scan_message_modules(shared_src:)
   // module_files should contain both files
   let assert 2 = dict.size(files)
 

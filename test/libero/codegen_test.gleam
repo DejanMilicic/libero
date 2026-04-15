@@ -1,15 +1,16 @@
 import gleam/string
-import libero
+import libero/codegen
+import libero/scanner
 import simplifile
 
 pub fn dispatch_contains_state_threading_test() {
   let assert Ok(#(modules, _module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let output_dir = "build/.test_codegen_dispatch"
   let assert Ok(Nil) =
-    libero.write_v3_dispatch(
+    codegen.write_dispatch(
       message_modules: modules,
       server_generated: output_dir,
       atoms_module: "server@generated@libero@rpc_atoms",
@@ -36,12 +37,12 @@ pub fn dispatch_contains_state_threading_test() {
 
 pub fn send_function_contains_module_path_test() {
   let assert Ok(#(modules, _module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let output_dir = "build/.test_codegen_send"
   let assert Ok(Nil) =
-    libero.write_v3_send_functions(
+    codegen.write_send_functions(
       message_modules: modules,
       client_generated: output_dir,
     )

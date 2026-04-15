@@ -6,15 +6,16 @@
 import gleam/dict
 import gleam/list
 import gleam/set
-import libero
+import libero/scanner
+import libero/walker
 
 pub fn walk_discovers_toserver_variants_test() {
   let assert Ok(#(modules, module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let assert Ok(discovered) =
-    libero.walk_message_registry_types(
+    walker.walk_message_registry_types(
       message_modules: modules,
       module_files: module_files,
     )
@@ -27,11 +28,11 @@ pub fn walk_discovers_toserver_variants_test() {
 
 pub fn walk_discovers_toclient_variants_test() {
   let assert Ok(#(modules, module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let assert Ok(discovered) =
-    libero.walk_message_registry_types(
+    walker.walk_message_registry_types(
       message_modules: modules,
       module_files: module_files,
     )
@@ -45,11 +46,11 @@ pub fn walk_discovers_toclient_variants_test() {
 
 pub fn walk_discovers_transitive_types_test() {
   let assert Ok(#(modules, module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let assert Ok(discovered) =
-    libero.walk_message_registry_types(
+    walker.walk_message_registry_types(
       message_modules: modules,
       module_files: module_files,
     )
@@ -62,27 +63,27 @@ pub fn walk_discovers_transitive_types_test() {
 
 pub fn walk_atom_names_are_snake_case_test() {
   let assert Ok(#(modules, module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let assert Ok(discovered) =
-    libero.walk_message_registry_types(
+    walker.walk_message_registry_types(
       message_modules: modules,
       module_files: module_files,
     )
   let assert True =
     list.all(discovered, fn(v) {
-      v.atom_name == libero.to_snake_case(v.variant_name)
+      v.atom_name == walker.to_snake_case(v.variant_name)
     })
 }
 
 pub fn walk_no_duplicates_test() {
   let assert Ok(#(modules, module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let assert Ok(discovered) =
-    libero.walk_message_registry_types(
+    walker.walk_message_registry_types(
       message_modules: modules,
       module_files: module_files,
     )
@@ -93,7 +94,7 @@ pub fn walk_no_duplicates_test() {
 
 pub fn walk_empty_module_files_returns_error_test() {
   let modules = [
-    libero.MessageModule(
+    scanner.MessageModule(
       module_path: "nonexistent/module",
       file_path: "/tmp/nonexistent.gleam",
       has_to_server: True,
@@ -101,7 +102,7 @@ pub fn walk_empty_module_files_returns_error_test() {
     ),
   ]
   let assert Error(_errors) =
-    libero.walk_message_registry_types(
+    walker.walk_message_registry_types(
       message_modules: modules,
       module_files: dict.new(),
     )

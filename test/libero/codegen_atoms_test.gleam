@@ -4,17 +4,19 @@
 
 import gleam/list
 import gleam/string
-import libero
+import libero/codegen
+import libero/scanner
+import libero/walker
 import simplifile
 
 pub fn walk_and_write_dispatch_atoms_test() {
   let assert Ok(#(modules, module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
 
   let assert Ok(discovered) =
-    libero.walk_message_registry_types(
+    walker.walk_message_registry_types(
       message_modules: modules,
       module_files: module_files,
     )
@@ -22,7 +24,7 @@ pub fn walk_and_write_dispatch_atoms_test() {
   // Write dispatch to verify it works end-to-end
   let output_dir = "build/.test_codegen_atoms"
   let assert Ok(Nil) =
-    libero.write_v3_dispatch(
+    codegen.write_dispatch(
       message_modules: modules,
       server_generated: output_dir,
       atoms_module: "test@rpc_atoms",

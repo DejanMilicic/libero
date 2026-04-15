@@ -1,14 +1,15 @@
 import gleam/list
-import libero
+import libero/gen_error
+import libero/scanner
 
 pub fn scan_empty_dir_returns_no_modules_error_test() {
   let result =
-    libero.scan_message_modules(shared_src: "/tmp/nonexistent_libero_test_xyz")
+    scanner.scan_message_modules(shared_src: "/tmp/nonexistent_libero_test_xyz")
   let assert Error(errors) = result
   let assert True =
     list.any(errors, fn(e) {
       case e {
-        libero.NoMessageModules(_) -> True
+        gen_error.NoMessageModules(_) -> True
         _ -> False
       }
     })
@@ -16,7 +17,7 @@ pub fn scan_empty_dir_returns_no_modules_error_test() {
 
 pub fn scan_todos_example_finds_todos_module_test() {
   let assert Ok(#(modules, _module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let assert True = list.length(modules) == 1
@@ -29,11 +30,11 @@ pub fn scan_todos_example_finds_todos_module_test() {
 
 pub fn validate_todos_example_passes_test() {
   let assert Ok(#(modules, _module_files)) =
-    libero.scan_message_modules(
+    scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
   let errors =
-    libero.validate_conventions(
+    scanner.validate_conventions(
       message_modules: modules,
       server_src: "examples/todos/server/src",
     )
@@ -42,7 +43,7 @@ pub fn validate_todos_example_passes_test() {
 
 pub fn validate_missing_shared_state_test() {
   let modules = [
-    libero.MessageModule(
+    scanner.MessageModule(
       module_path: "shared/todos",
       file_path: "/tmp/todos.gleam",
       has_to_server: True,
@@ -50,14 +51,14 @@ pub fn validate_missing_shared_state_test() {
     ),
   ]
   let errors =
-    libero.validate_conventions(
+    scanner.validate_conventions(
       message_modules: modules,
       server_src: "/tmp/nonexistent_server_src",
     )
   let assert True =
     list.any(errors, fn(e) {
       case e {
-        libero.MissingSharedState(_) -> True
+        gen_error.MissingSharedState(_) -> True
         _ -> False
       }
     })
@@ -65,7 +66,7 @@ pub fn validate_missing_shared_state_test() {
 
 pub fn validate_missing_app_error_test() {
   let modules = [
-    libero.MessageModule(
+    scanner.MessageModule(
       module_path: "shared/todos",
       file_path: "/tmp/todos.gleam",
       has_to_server: True,
@@ -73,14 +74,14 @@ pub fn validate_missing_app_error_test() {
     ),
   ]
   let errors =
-    libero.validate_conventions(
+    scanner.validate_conventions(
       message_modules: modules,
       server_src: "/tmp/nonexistent_server_src",
     )
   let assert True =
     list.any(errors, fn(e) {
       case e {
-        libero.MissingAppError(_) -> True
+        gen_error.MissingAppError(_) -> True
         _ -> False
       }
     })
@@ -88,7 +89,7 @@ pub fn validate_missing_app_error_test() {
 
 pub fn validate_missing_handler_test() {
   let modules = [
-    libero.MessageModule(
+    scanner.MessageModule(
       module_path: "shared/todos",
       file_path: "/tmp/todos.gleam",
       has_to_server: True,
@@ -96,14 +97,14 @@ pub fn validate_missing_handler_test() {
     ),
   ]
   let errors =
-    libero.validate_conventions(
+    scanner.validate_conventions(
       message_modules: modules,
       server_src: "/tmp/nonexistent_server_src",
     )
   let assert True =
     list.any(errors, fn(e) {
       case e {
-        libero.MissingHandler(_, _) -> True
+        gen_error.MissingHandler(_, _) -> True
         _ -> False
       }
     })
