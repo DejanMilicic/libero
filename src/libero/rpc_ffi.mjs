@@ -597,35 +597,11 @@ function snakeCase(name) {
 
 // ---------- Public codec API ----------
 
-// Decode an ETF buffer into a JS-shaped value. Used internally by
-// libero's RPC machinery to parse incoming call responses.
-export function decode(buffer) {
-  const decoder = new ETFDecoder(buffer);
-  return decoder.decode();
-}
-
-// Encode a {function_name, args} call envelope. Used internally by
-// libero's RPC machinery to format outgoing call requests.
-export function encode(name, args) {
-  const normalizedArgs = normalizeArgs(args);
-  const encoder = new ETFEncoder();
-  // Version byte
-  encoder.writeUint8(131);
-  // Envelope: {<<"function_name">>, [arg1, arg2, ...]}
-  encoder.writeUint8(104); // SMALL_TUPLE_EXT
-  encoder.writeUint8(2);   // arity 2
-  // Element 0: function name as BINARY_EXT
-  encoder.encodeBinary(name);
-  // Element 1: args as LIST_EXT
-  encoder.encodeList(normalizedArgs);
-  return encoder.result();
-}
-
 // Encode a standalone Gleam value to an ETF binary. Used by the
-// public `libero.wire.encode` function. Unlike `encode(name, args)`
-// above, there is no call envelope — the result is the raw ETF
-// encoding of a single value. Intended for non-RPC paths like
-// passing state into a Lustre SPA via init flags.
+// public `libero.wire.encode` function. Unlike `encode_call`, there
+// is no envelope — the result is the raw ETF encoding of a single
+// value. Intended for non-RPC paths like passing state into a
+// Lustre SPA via init flags.
 export function encode_value(value) {
   const encoder = new ETFEncoder();
   encoder.writeUint8(131); // ETF version byte
@@ -659,19 +635,6 @@ export function decode_safe(buffer) {
     if (errorCtor && decodeCtor) return new errorCtor(new decodeCtor(msg));
     return { type: "Error", 0: { type: "DecodeError", 0: msg } };
   }
-}
-
-function normalizeArgs(args) {
-  // Nil in Gleam compiles to undefined on JS.
-  if (args === undefined) return [];
-  // JS array = Gleam tuple - already positional, just walk.
-  if (Array.isArray(args)) return args;
-  // Gleam linked list - flatten.
-  if (args && typeof args === "object" && args.head !== undefined) {
-    return gleamListToArray(args);
-  }
-  // Single scalar arg - wrap in a one-element array.
-  return [args];
 }
 
 // ---------- Auto-wire Gleam prelude + libero framework types ----------
@@ -746,134 +709,42 @@ try {
   // but won't produce a genuine Gleam Dict instance.
 }
 
-// ---------- WebSocket + call queue ----------
+// ---------- WebSocket ----------
 //
-// Responses are matched to requests by FIFO order - the server must
-// send responses in the same order it received requests. This holds
-// for the current architecture (one Erlang process per WebSocket
-// connection, sequential dispatch). If the server ever processes
-// requests concurrently, this would need message IDs for correlation.
-//
-// Every `call` receives the WebSocket URL as its first argument. On the
-// first call, the socket is opened lazily. Subsequent calls reuse the
-// existing connection (the URL is a compile-time const from Gleam's
-// rpc_config module, so it doesn't change across calls). Calls issued
+// `send` opens the WebSocket lazily on first call and caches the
+// connection. The URL is a compile-time constant from Gleam's
+// rpc_config module, so it doesn't change across calls. Sends issued
 // before the socket's open event are queued and flushed once it opens.
-//
-// On disconnect, the socket reconnects with exponential backoff (100ms
-// to 5s cap). In-flight callbacks from before the disconnect are
-// drained with a ConnectionLost error so they don't silently receive
-// responses meant for different requests after reconnection.
 
 let ws = null;
-let callbackQueue = [];
 let pendingSends = [];
-let reconnectAttempts = 0;
-let reconnectTimer = null;
-let currentUrl = null;
 
 function ensureSocket(url) {
-  currentUrl = url;
   if (ws !== null) return;
 
   ws = new WebSocket(url);
   ws.binaryType = "arraybuffer";
 
   ws.addEventListener("open", () => {
-    reconnectAttempts = 0;
     for (const payload of pendingSends) ws.send(payload);
     pendingSends = [];
   });
 
-  ws.addEventListener("message", (event) => {
-    const buffer = event.data instanceof ArrayBuffer
-      ? event.data
-      : event.data.buffer || event.data;
-    const value = decode(buffer);
-    const cb = callbackQueue.shift();
-    if (cb) cb(value);
-  });
-
   ws.addEventListener("close", () => {
     ws = null;
-    drainCallbacksOnDisconnect();
-    scheduleReconnect();
   });
 
   ws.addEventListener("error", () => {
-    // Error is always followed by close, so reconnection happens there.
-    // Just close ws so the close handler can null it and reconnect.
+    // Error is always followed by close, so cleanup happens there.
     if (ws) {
       ws.close();
     }
   });
 }
 
-// Drain in-flight callbacks with a ConnectionLost error on disconnect.
-// Without this, callbacks from before the disconnect would receive
-// responses meant for different requests after reconnection (FIFO
-// mismatch), causing silent data corruption via unsafe_coerce.
-function drainCallbacksOnDisconnect() {
-  const stale = callbackQueue.splice(0);
-  // Build an InternalError("connection_lost", "WebSocket disconnected")
-  // that matches libero's RpcError shape.
-  // Wire shape: Error(InternalError(trace_id, message))
-  // = {error, {internal_error, trace_id, message}} in ETF terms
-  // but since we're on the JS side, we build the Gleam constructor directly.
-  for (const cb of stale) {
-    try {
-      // Import the error constructors lazily. If gleam_stdlib is available,
-      // we can build a proper Error(InternalError(...)) value.
-      // The constructors are already registered via register_all().
-      const errorValue = buildConnectionLostError();
-      cb(errorValue);
-    } catch (_) {
-      // If we can't build the error shape, just drop the callback.
-      // This is still better than silent data corruption.
-    }
-  }
-}
-
-// Build an Error(InternalError("connection_lost", "WebSocket disconnected"))
-// using the registered Gleam constructors.
-function buildConnectionLostError() {
-  const internalError = registry.get("internal_error");
-  const errorCtor = registry.get("error");
-  if (internalError && errorCtor) {
-    return new errorCtor(new internalError("connection_lost", "WebSocket disconnected"));
-  }
-  // Fallback: return a tagged object that pattern matching can still handle.
-  return { type: "Error", 0: { type: "InternalError", 0: "connection_lost", 1: "WebSocket disconnected" } };
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer !== null) return;
-  if (currentUrl === null) return;
-
-  // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms, cap at 5s
-  const delay = Math.min(100 * Math.pow(2, reconnectAttempts), 5000);
-  reconnectAttempts++;
-
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    ensureSocket(currentUrl);
-  }, delay);
-}
-
-export function call(url, name, args, onResponse) {
-  ensureSocket(url);
-  const payload = encode(name, args);
-  callbackQueue.push(onResponse);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(payload);
-  } else {
-    pendingSends.push(payload);
-  }
-}
-
-// v3 fire-and-forget send: encode {module, msg} envelope and send.
+// Fire-and-forget send: encode {module, msg} envelope and send.
 // No response callback - the server pushes ToClient updates via a
-// separate channel. This is the one-way send used by v3 message modules.
+// separate channel. This is the one-way send used by message modules.
 export function send(url, module, msg) {
   ensureSocket(url);
   const payload = encode_call(module, msg);
@@ -884,7 +755,7 @@ export function send(url, module, msg) {
   }
 }
 
-// Encode a v3 call envelope: {module_name, msg} as ETF binary.
+// Encode a call envelope: {module_name, msg} as ETF binary.
 // Symmetric with the server-side wire.encode_call.
 export function encode_call(module, msg) {
   const encoder = new ETFEncoder();

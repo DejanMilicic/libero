@@ -41,7 +41,7 @@ import gleam/dict.{type Dict}
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set.{type Set}
 import gleam/string
@@ -243,14 +243,14 @@ fn build_config(
   // server_src = <server_root>/src         (the server package's src dir)
   // v3_server_generated and v3_client_generated are where dispatch.gleam and
   // client send stubs are written, matching the convention used by the consumer.
-  let shared_src = case shared_root {
-    Ok(root) -> Some(root <> "/src/shared")
-    Error(_) -> None
-  }
-  let server_src = case server_root {
-    Ok(root) -> Some(root <> "/src")
-    Error(_) -> None
-  }
+  let shared_src: Option(String) =
+    shared_root
+    |> result.map(fn(root) { root <> "/src/shared" })
+    |> option.from_result
+  let server_src: Option(String) =
+    server_root
+    |> result.map(fn(root) { root <> "/src" })
+    |> option.from_result
   let v3_server_generated = case namespace {
     None -> "src/server/generated/libero"
     Some(ns) -> "src/server/generated/libero/" <> ns
@@ -405,14 +405,12 @@ fn run_v3(
 /// The module path is derived by stripping up to and including "/src/"
 /// and dropping the ".gleam" extension.
 fn build_module_files(dir dir: String) -> Dict(String, String) {
-  case walk_directory(path: dir) {
-    Error(_) -> dict.new()
-    Ok(files) ->
-      list.fold(files, dict.new(), fn(acc, file_path) {
-        let module_path = derive_module_path(file_path: file_path)
-        dict.insert(acc, module_path, file_path)
-      })
-  }
+  walk_directory(path: dir)
+  |> result.unwrap(or: [])
+  |> list.fold(dict.new(), fn(acc, file_path) {
+    let module_path = derive_module_path(file_path: file_path)
+    dict.insert(acc, module_path, file_path)
+  })
 }
 
 /// Write the client-side type registration files for v3 (gleam wrapper + mjs FFI).
@@ -1373,55 +1371,52 @@ fn extract_dir(path: String) -> String {
 pub fn scan_message_modules(
   shared_src shared_src: String,
 ) -> Result(List(MessageModule), List(GenError)) {
-  case walk_directory(path: shared_src) {
-    Error(_) -> Error([NoMessageModules(shared_path: shared_src)])
-    Ok(files) -> {
-      let modules =
-        list.filter_map(files, fn(file_path) {
-          parse_message_module(file_path: file_path)
-        })
-      case modules {
-        [] -> Error([NoMessageModules(shared_path: shared_src)])
-        _ -> Ok(modules)
-      }
-    }
+  let files =
+    walk_directory(path: shared_src)
+    |> result.map_error(fn(cause) { [cause, NoMessageModules(shared_path: shared_src)] })
+  use files <- result.try(files)
+  let modules =
+    list.filter_map(files, fn(file_path) {
+      parse_message_module(file_path: file_path)
+    })
+  case modules {
+    [] -> Error([NoMessageModules(shared_path: shared_src)])
+    _ -> Ok(modules)
   }
 }
 
 fn parse_message_module(
   file_path file_path: String,
 ) -> Result(MessageModule, Nil) {
-  case simplifile.read(file_path) {
-    Error(_) -> Error(Nil)
-    Ok(content) ->
-      case glance.module(content) {
-        Error(_) -> Error(Nil)
-        Ok(parsed) -> {
-          let has_to_server =
-            list.any(parsed.custom_types, fn(ct) {
-              let glance.Definition(_, t) = ct
-              t.name == "ToServer" && t.publicity == glance.Public
-            })
-          let has_to_client =
-            list.any(parsed.custom_types, fn(ct) {
-              let glance.Definition(_, t) = ct
-              t.name == "ToClient" && t.publicity == glance.Public
-            })
-          case has_to_server || has_to_client {
-            False -> Error(Nil)
-            True -> {
-              let module_path = derive_module_path(file_path: file_path)
-              Ok(MessageModule(
-                module_path: module_path,
-                file_path: file_path,
-                has_to_server: has_to_server,
-                has_to_client: has_to_client,
-              ))
-            }
-          }
-        }
-      }
-  }
+  use content <- result.try(
+    simplifile.read(file_path)
+    |> result.replace_error(Nil),
+  )
+  use parsed <- result.try(
+    glance.module(content)
+    |> result.replace_error(Nil),
+  )
+  let has_to_server =
+    list.any(parsed.custom_types, fn(ct) {
+      let glance.Definition(_, t) = ct
+      t.name == "ToServer" && t.publicity == glance.Public
+    })
+  let has_to_client =
+    list.any(parsed.custom_types, fn(ct) {
+      let glance.Definition(_, t) = ct
+      t.name == "ToClient" && t.publicity == glance.Public
+    })
+  use <- bool.guard(
+    when: !has_to_server && !has_to_client,
+    return: Error(Nil),
+  )
+  let module_path = derive_module_path(file_path: file_path)
+  Ok(MessageModule(
+    module_path: module_path,
+    file_path: file_path,
+    has_to_server: has_to_server,
+    has_to_client: has_to_client,
+  ))
 }
 
 /// Derive the Gleam module path from a file path by finding `/src/` and
@@ -1437,10 +1432,9 @@ fn derive_module_path(file_path file_path: String) -> String {
       )
     False -> file_path
   }
-  case string.split_once(without_extension, "/src/") {
-    Ok(#(_, after_src)) -> after_src
-    Error(_) -> without_extension
-  }
+  string.split_once(without_extension, "/src/")
+  |> result.map(fn(pair) { pair.1 })
+  |> result.unwrap(or: without_extension)
 }
 
 // ---------- Convention validation ----------
@@ -1460,14 +1454,18 @@ pub fn validate_conventions(
   let shared_state_path = server_src <> "/server/shared_state.gleam"
   let app_error_path = server_src <> "/server/app_error.gleam"
 
-  let shared_state_errors = case simplifile.is_file(shared_state_path) {
-    Ok(True) -> []
-    _ -> [MissingSharedState(expected_path: shared_state_path)]
+  let shared_state_exists =
+    simplifile.is_file(shared_state_path) |> result.unwrap(or: False)
+  let shared_state_errors = case shared_state_exists {
+    True -> []
+    False -> [MissingSharedState(expected_path: shared_state_path)]
   }
 
-  let app_error_errors = case simplifile.is_file(app_error_path) {
-    Ok(True) -> []
-    _ -> [MissingAppError(expected_path: app_error_path)]
+  let app_error_exists =
+    simplifile.is_file(app_error_path) |> result.unwrap(or: False)
+  let app_error_errors = case app_error_exists {
+    True -> []
+    False -> [MissingAppError(expected_path: app_error_path)]
   }
 
   let handler_errors =
@@ -1475,12 +1473,14 @@ pub fn validate_conventions(
       case m.has_to_server {
         False -> []
         True -> {
-          let segment = last_module_segment(m.module_path)
+          let segment = last_module_segment(module_path: m.module_path)
           let handler_path =
             server_src <> "/server/handlers/" <> segment <> ".gleam"
-          case simplifile.is_file(handler_path) {
-            Ok(True) -> []
-            _ -> [
+          let handler_exists =
+            simplifile.is_file(handler_path) |> result.unwrap(or: False)
+          case handler_exists {
+            True -> []
+            False -> [
               MissingHandler(
                 message_module: m.module_path,
                 expected_path: handler_path,
@@ -1497,14 +1497,9 @@ pub fn validate_conventions(
 /// Extract the last path segment from a module path.
 /// E.g. `shared/todos` -> `todos`, `todos` -> `todos`.
 fn last_module_segment(module_path module_path: String) -> String {
-  case string.split(module_path, "/") {
-    [] -> module_path
-    segments ->
-      case list.last(segments) {
-        Ok(last) -> last
-        Error(_) -> module_path
-      }
-  }
+  string.split(module_path, "/")
+  |> list.last
+  |> result.unwrap(or: module_path)
 }
 
 // ---------- v3 type walker ----------
@@ -1568,14 +1563,14 @@ pub fn write_v3_dispatch(
   // e.g. "shared/todos" -> alias "todos_handler", import "server/handlers/todos"
   let handler_imports =
     list.map(to_server_modules, fn(m) {
-      let segment = last_module_segment(m.module_path)
+      let segment = last_module_segment(module_path: m.module_path)
       "import server/handlers/" <> segment <> " as " <> segment <> "_handler"
     })
 
   // Build the case arms for the dispatch function.
   let case_arms =
     list.map(to_server_modules, fn(m) {
-      let segment = last_module_segment(m.module_path)
+      let segment = last_module_segment(module_path: m.module_path)
       "    Ok(#(\""
       <> m.module_path
       <> "\", msg)) ->\n      dispatch(fn() { "
@@ -1657,7 +1652,7 @@ pub fn write_v3_send_functions(
 
   let errors =
     list.filter_map(to_server_modules, fn(m) {
-      let segment = last_module_segment(m.module_path)
+      let segment = last_module_segment(module_path: m.module_path)
       let content =
         "//// Code generated by libero. DO NOT EDIT.
 
