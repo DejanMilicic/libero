@@ -40,6 +40,18 @@ type TypeResolver {
   )
 }
 
+/// State threaded through the BFS type graph walker.
+type WalkerState {
+  WalkerState(
+    queue: List(#(String, String)),
+    visited: Set(#(String, String)),
+    discovered: List(DiscoveredVariant),
+    module_files: Dict(String, String),
+    parsed_cache: Dict(String, glance.Module),
+    errors: List(GenError),
+  )
+}
+
 /// Module prefixes that should never be walked - their types are
 /// handled by libero's auto-wire blocks in rpc_ffi.mjs.
 const registry_skip_prefixes = ["libero/", "gleam/"]
@@ -94,54 +106,41 @@ pub fn walk_message_registry_types(
     })
     |> set.to_list
 
-  do_walk(
+  do_walk(WalkerState(
     queue: seed,
     visited: set.new(),
     discovered: [],
     module_files: module_files,
     parsed_cache: dict.new(),
     errors: [],
-  )
+  ))
 }
 
 fn do_walk(
-  queue queue: List(#(String, String)),
-  visited visited: Set(#(String, String)),
-  discovered discovered: List(DiscoveredVariant),
-  module_files module_files: Dict(String, String),
-  parsed_cache parsed_cache: Dict(String, glance.Module),
-  errors errors: List(GenError),
+  state: WalkerState,
 ) -> Result(List(DiscoveredVariant), List(GenError)) {
-  case queue {
+  case state.queue {
     [] ->
-      case errors {
-        [] -> Ok(list.reverse(discovered))
-        _ -> Error(list.reverse(errors))
+      case state.errors {
+        [] -> Ok(list.reverse(state.discovered))
+        _ -> Error(list.reverse(state.errors))
       }
     [#(module_path, type_name), ..rest_queue] -> {
       let key = #(module_path, type_name)
       // Skip already-visited items
-      use <- bool.lazy_guard(when: set.contains(visited, key), return: fn() {
-        do_walk(
-          queue: rest_queue,
-          visited: visited,
-          discovered: discovered,
-          module_files: module_files,
-          parsed_cache: parsed_cache,
-          errors: errors,
-        )
-      })
-      let new_visited = set.insert(visited, key)
-      process_type(
-        module_path: module_path,
-        type_name: type_name,
-        rest_queue: rest_queue,
-        visited: new_visited,
-        discovered: discovered,
-        module_files: module_files,
-        parsed_cache: parsed_cache,
-        errors: errors,
+      use <- bool.lazy_guard(
+        when: set.contains(state.visited, key),
+        return: fn() {
+          do_walk(WalkerState(..state, queue: rest_queue))
+        },
       )
+      let state =
+        WalkerState(
+          ..state,
+          queue: rest_queue,
+          visited: set.insert(state.visited, key),
+        )
+      process_type(module_path:, type_name:, state:)
     }
   }
 }
@@ -149,54 +148,17 @@ fn do_walk(
 fn process_type(
   module_path module_path: String,
   type_name type_name: String,
-  rest_queue rest_queue: List(#(String, String)),
-  visited visited: Set(#(String, String)),
-  discovered discovered: List(DiscoveredVariant),
-  module_files module_files: Dict(String, String),
-  parsed_cache parsed_cache: Dict(String, glance.Module),
-  errors errors: List(GenError),
+  state state: WalkerState,
 ) -> Result(List(DiscoveredVariant), List(GenError)) {
-  let continue_without_errors = fn(cache) {
-    do_walk(
-      queue: rest_queue,
-      visited: visited,
-      discovered: discovered,
-      module_files: module_files,
-      parsed_cache: cache,
-      errors: errors,
-    )
-  }
-  let continue_with_error = fn(cache, e) {
-    do_walk(
-      queue: rest_queue,
-      visited: visited,
-      discovered: discovered,
-      module_files: module_files,
-      parsed_cache: cache,
-      errors: [e, ..errors],
-    )
-  }
   // Resolve file path - if missing, record error and continue
-  case dict.get(module_files, module_path) {
+  case dict.get(state.module_files, module_path) {
     Error(Nil) ->
-      continue_with_error(
-        parsed_cache,
-        UnresolvedTypeModule(module_path:, type_name:),
-      )
+      do_walk(WalkerState(
+        ..state,
+        errors: [UnresolvedTypeModule(module_path:, type_name:), ..state.errors],
+      ))
     Ok(file_path) ->
-      process_type_file(
-        module_path: module_path,
-        type_name: type_name,
-        file_path: file_path,
-        rest_queue: rest_queue,
-        visited: visited,
-        discovered: discovered,
-        module_files: module_files,
-        parsed_cache: parsed_cache,
-        errors: errors,
-        continue_without_errors: continue_without_errors,
-        continue_with_error: continue_with_error,
-      )
+      process_type_file(module_path:, type_name:, file_path:, state:)
   }
 }
 
@@ -204,38 +166,18 @@ fn process_type_file(
   module_path module_path: String,
   type_name type_name: String,
   file_path file_path: String,
-  rest_queue rest_queue: List(#(String, String)),
-  visited visited: Set(#(String, String)),
-  discovered discovered: List(DiscoveredVariant),
-  module_files module_files: Dict(String, String),
-  parsed_cache parsed_cache: Dict(String, glance.Module),
-  errors errors: List(GenError),
-  continue_without_errors continue_without_errors: fn(
-    Dict(String, glance.Module),
-  ) ->
-    Result(List(DiscoveredVariant), List(GenError)),
-  continue_with_error continue_with_error: fn(
-    Dict(String, glance.Module),
-    GenError,
-  ) ->
-    Result(List(DiscoveredVariant), List(GenError)),
+  state state: WalkerState,
 ) -> Result(List(DiscoveredVariant), List(GenError)) {
   // Parse or load from cache
-  case load_ast(module_path:, file_path:, parsed_cache:) {
-    Error(e) -> continue_with_error(parsed_cache, e)
+  case load_ast(module_path:, file_path:, parsed_cache: state.parsed_cache) {
+    Error(e) ->
+      do_walk(WalkerState(..state, errors: [e, ..state.errors]))
     Ok(#(ast, new_cache)) ->
       process_type_ast(
-        module_path: module_path,
-        type_name: type_name,
-        ast: ast,
-        new_cache: new_cache,
-        rest_queue: rest_queue,
-        visited: visited,
-        discovered: discovered,
-        module_files: module_files,
-        errors: errors,
-        continue_without_errors: fn(c) { continue_without_errors(c) },
-        continue_with_error: fn(c, e) { continue_with_error(c, e) },
+        module_path:,
+        type_name:,
+        ast:,
+        state: WalkerState(..state, parsed_cache: new_cache),
       )
   }
 }
@@ -244,32 +186,21 @@ fn process_type_ast(
   module_path module_path: String,
   type_name type_name: String,
   ast ast: glance.Module,
-  new_cache new_cache: Dict(String, glance.Module),
-  rest_queue rest_queue: List(#(String, String)),
-  visited visited: Set(#(String, String)),
-  discovered discovered: List(DiscoveredVariant),
-  module_files module_files: Dict(String, String),
-  errors errors: List(GenError),
-  continue_without_errors continue_without_errors: fn(
-    Dict(String, glance.Module),
-  ) ->
-    Result(List(DiscoveredVariant), List(GenError)),
-  continue_with_error continue_with_error: fn(
-    Dict(String, glance.Module),
-    GenError,
-  ) ->
-    Result(List(DiscoveredVariant), List(GenError)),
+  state state: WalkerState,
 ) -> Result(List(DiscoveredVariant), List(GenError)) {
   // Check type alias - skip silently
   let is_alias =
     list.any(ast.type_aliases, fn(d) { d.definition.name == type_name })
   use <- bool.lazy_guard(when: is_alias, return: fn() {
-    continue_without_errors(new_cache)
+    do_walk(state)
   })
   // Find the custom type definition
   case list.find(ast.custom_types, fn(d) { d.definition.name == type_name }) {
     Error(Nil) ->
-      continue_with_error(new_cache, TypeNotFound(module_path:, type_name:))
+      do_walk(WalkerState(
+        ..state,
+        errors: [TypeNotFound(module_path:, type_name:), ..state.errors],
+      ))
     Ok(ct_def) -> {
       let custom_type = ct_def.definition
       let resolver = build_type_resolver(ast.imports)
@@ -290,21 +221,18 @@ fn process_type_ast(
               variant: variant,
               resolver: resolver,
               current_module: module_path,
-              visited: visited,
+              visited: state.visited,
             )
           #([disc_item, ..disc_acc], list.append(field_refs, queue_acc))
         })
       let new_discovered =
-        list.append(discovered, list.reverse(new_discovered_rev))
+        list.append(state.discovered, list.reverse(new_discovered_rev))
       let new_queue_items = list.reverse(new_queue_items_rev)
-      do_walk(
-        queue: list.append(rest_queue, new_queue_items),
-        visited: visited,
+      do_walk(WalkerState(
+        ..state,
+        queue: list.append(state.queue, new_queue_items),
         discovered: new_discovered,
-        module_files: module_files,
-        parsed_cache: new_cache,
-        errors: errors,
-      )
+      ))
     }
   }
 }
