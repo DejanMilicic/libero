@@ -56,6 +56,7 @@ pub fn handler(
     }
     mist.Custom(Ignored) -> mist.continue(state)
     mist.Closed | mist.Shutdown -> {
+      push.leave(topic: "todos")
       io.println("[ws] client disconnected")
       mist.stop()
     }

@@ -501,11 +501,22 @@ let registered = false;
 
 export function registerAll() {
   if (registered) return;
-  registered = true;
+  try {
+    registered = true;
 " <> string.join(
       all_calls,
       "\n",
-    ) <> "\n}\n"
+    ) <> "
+  } catch (e) {
+    registered = false;
+    const msg = \"libero: type registration failed. \"
+      + \"This usually means the generated code is stale or the project \"
+      + \"has not been compiled yet. Re-run: gleam run -m libero -- ...\\n\"
+      + \"Original error: \" + (e.message || e);
+    throw new globalThis.Error(msg);
+  }
+}
+"
   let output = config.register_ffi_output
   ensure_parent_dir(path: output)
   write_file(path: output, content: content)

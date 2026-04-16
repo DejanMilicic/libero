@@ -69,6 +69,9 @@ The server can push messages to connected clients without a prior request. Uses 
 // Server — on WebSocket connect, join a topic
 push.join(topic: "todos")
 
+// Server — on disconnect, leave the topic
+push.leave(topic: "todos")
+
 // Server — in a handler, push to all subscribers via generated wrapper
 import server/generated/libero/todos as todos_push
 todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
@@ -83,7 +86,7 @@ todos_push.send_to_client(client_id: "user:42", msg: Created(item))
 todos_rpc.update_from_server(handler: fn(raw) { GotPush(wire.coerce(raw)) })
 ```
 
-Push is opt-in. If you never call `update_from_server`, push frames are silently dropped. If unused, tree shaking removes the generated code.
+Push is opt-in. If you never call `update_from_server`, push frames are silently dropped. If unused, tree shaking removes the generated code. Calling `push.leave` on disconnect is good practice, though pg will also clean up when the WebSocket process exits.
 
 ## HTTP clients
 

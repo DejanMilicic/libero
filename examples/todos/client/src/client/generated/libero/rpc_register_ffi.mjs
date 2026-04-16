@@ -20,7 +20,8 @@ let registered = false;
 
 export function registerAll() {
   if (registered) return;
-  registered = true;
+  try {
+    registered = true;
   // Framework types
   setGleamCustomType(CustomType);
   setListCtors(Empty, NonEmpty);
@@ -47,4 +48,12 @@ export function registerAll() {
   if (_m0.Delete) registerConstructor("delete", _m0.Delete);
   if (_m0.Toggle) registerConstructor("toggle", _m0.Toggle);
   if (_m0.Create) registerConstructor("create", _m0.Create);
+  } catch (e) {
+    registered = false;
+    const msg = "libero: type registration failed. "
+      + "This usually means the generated code is stale or the project "
+      + "has not been compiled yet. Re-run: gleam run -m libero -- ...\n"
+      + "Original error: " + (e.message || e);
+    throw new globalThis.Error(msg);
+  }
 }
