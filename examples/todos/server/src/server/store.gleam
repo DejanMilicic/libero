@@ -3,8 +3,8 @@
 
 import gleam/list
 import gleam/order
-import libero/push
 import server/app_error.{type AppError}
+import server/generated/libero/todos as todos_push
 import server/shared_state.{type SharedState}
 import shared/todos.{
   type MsgFromClient, type MsgFromServer, type Todo, AllLoaded, Create, Created,
@@ -65,11 +65,7 @@ pub fn update_from_client(
         "" -> Ok(#(TodoFailed(TitleRequired), state))
         title -> {
           let item = insert(title:)
-          push.send_to_clients(
-            topic: "todos",
-            module: "shared/todos",
-            msg: AllLoaded(all()),
-          )
+          todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
           Ok(#(Created(item), state))
         }
       }
@@ -77,11 +73,7 @@ pub fn update_from_client(
     Toggle(id:) -> {
       case toggle(id:) {
         Ok(toggled) -> {
-          push.send_to_clients(
-            topic: "todos",
-            module: "shared/todos",
-            msg: AllLoaded(all()),
-          )
+          todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
           Ok(#(Toggled(toggled), state))
         }
         Error(Nil) -> Error(NotFound)
@@ -90,11 +82,7 @@ pub fn update_from_client(
     Delete(id:) -> {
       case delete(id:) {
         Ok(Nil) -> {
-          push.send_to_clients(
-            topic: "todos",
-            module: "shared/todos",
-            msg: AllLoaded(all()),
-          )
+          todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
           Ok(#(Deleted(id), state))
         }
         Error(Nil) -> Error(NotFound)
