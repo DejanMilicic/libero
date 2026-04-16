@@ -10,8 +10,6 @@ pub type GenError {
   EmptyModulePath(path: String)
   UnresolvedTypeModule(module_path: String, type_name: String)
   TypeNotFound(module_path: String, type_name: String)
-  MissingSharedState(expected_path: String)
-  MissingAppError(expected_path: String)
   MissingHandler(message_module: String, expected: String)
   NoMessageModules(shared_path: String)
 }
@@ -46,16 +44,6 @@ pub fn print_error(err: GenError) -> Nil {
       <> module_path
       <> "`"
       <> "\n  the type may be private, or the module path may be incorrect"
-    MissingSharedState(expected_path) ->
-      "missing server/shared_state.gleam: expected at `"
-      <> expected_path
-      <> "`"
-      <> "\n  create a module exporting the `SharedState` type"
-    MissingAppError(expected_path) ->
-      "missing server/app_error.gleam: expected at `"
-      <> expected_path
-      <> "`"
-      <> "\n  create a module exporting the `AppError` type"
     MissingHandler(message_module, expected) ->
       "missing handler for message module `"
       <> message_module

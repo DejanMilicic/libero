@@ -9,13 +9,14 @@
 import glance
 import gleam/bool
 import gleam/dict.{type Dict}
+import gleam/io
 import gleam/list
 import gleam/option
 import gleam/result
 import gleam/string
 import libero/gen_error.{
-  type GenError, CannotReadDir, MissingAppError, MissingHandler,
-  MissingSharedState, NoMessageModules,
+  type GenError, CannotReadDir, CannotWriteFile, MissingHandler,
+  NoMessageModules,
 }
 import simplifile
 
@@ -333,18 +334,18 @@ pub fn validate_conventions(
   let shared_state_path = server_src <> "/server/shared_state.gleam"
   let app_error_path = server_src <> "/server/app_error.gleam"
 
-  let shared_state_exists =
+  let shared_state_errors = case
     simplifile.is_file(shared_state_path) |> result.unwrap(or: False)
-  let shared_state_errors = case shared_state_exists {
+  {
     True -> []
-    False -> [MissingSharedState(expected_path: shared_state_path)]
+    False -> scaffold_shared_state(shared_state_path)
   }
 
-  let app_error_exists =
+  let app_error_errors = case
     simplifile.is_file(app_error_path) |> result.unwrap(or: False)
-  let app_error_errors = case app_error_exists {
+  {
     True -> []
-    False -> [MissingAppError(expected_path: app_error_path)]
+    False -> scaffold_app_error(app_error_path)
   }
 
   // Scan server source for handler modules
@@ -405,6 +406,52 @@ pub fn validate_conventions(
   case all_errors {
     [] -> Ok(list.reverse(updated_modules))
     _ -> Error(all_errors)
+  }
+}
+
+/// Scaffold a default shared_state.gleam if missing.
+/// Returns an empty error list on success so it integrates
+/// with the existing error-collection flow.
+fn scaffold_shared_state(path: String) -> List(GenError) {
+  let content =
+    "/// Replace this with your application's shared state type.
+/// If your state lives in ETS or a database, this unit type
+/// is fine as-is.
+
+pub type SharedState {
+  SharedState
+}
+
+pub fn new() -> SharedState {
+  SharedState
+}
+"
+  case simplifile.write(path, content) {
+    Ok(Nil) -> {
+      io.println("  scaffolded " <> path)
+      []
+    }
+    Error(cause) -> [CannotWriteFile(path:, cause:)]
+  }
+}
+
+/// Scaffold a default app_error.gleam if missing.
+fn scaffold_app_error(path: String) -> List(GenError) {
+  let content =
+    "/// Replace this with your application's error type.
+/// Handlers return Result(#(MsgFromServer, SharedState), AppError),
+/// and AppError values are sent to the client as typed errors.
+
+pub type AppError {
+  AppError(String)
+}
+"
+  case simplifile.write(path, content) {
+    Ok(Nil) -> {
+      io.println("  scaffolded " <> path)
+      []
+    }
+    Error(cause) -> [CannotWriteFile(path:, cause:)]
   }
 }
 

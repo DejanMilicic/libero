@@ -1,6 +1,8 @@
 import gleam/list
+import gleam/string
 import libero/gen_error
 import libero/scanner
+import simplifile
 
 pub fn scan_empty_dir_returns_no_modules_error_test() {
   let result =
@@ -43,7 +45,10 @@ pub fn validate_todos_example_passes_test() {
   let assert True = m.handler_modules == ["server/store"]
 }
 
-pub fn validate_missing_shared_state_test() {
+pub fn scaffold_shared_state_when_missing_test() {
+  let dir = "build/.test_scaffold"
+  let server_dir = dir <> "/server"
+  let _ = simplifile.create_directory_all(server_dir)
   let modules = [
     scanner.MessageModule(
       module_path: "shared/todos",
@@ -53,21 +58,26 @@ pub fn validate_missing_shared_state_test() {
       handler_modules: [],
     ),
   ]
-  let assert Error(errors) =
+  // Validation will scaffold missing files, but still error on missing handler
+  let assert Error(_errors) =
     scanner.validate_conventions(
       message_modules: modules,
-      server_src: "/tmp/nonexistent_server_src",
+      server_src: dir,
     )
-  let assert True =
-    list.any(errors, fn(e) {
-      case e {
-        gen_error.MissingSharedState(_) -> True
-        _ -> False
-      }
-    })
+  // shared_state.gleam should have been scaffolded
+  let assert Ok(content) =
+    simplifile.read(server_dir <> "/shared_state.gleam")
+  let assert True = string.contains(content, "pub type SharedState")
+  let assert True = string.contains(content, "pub fn new()")
+
+  // Cleanup
+  let assert Ok(Nil) = simplifile.delete_all([dir])
 }
 
-pub fn validate_missing_app_error_test() {
+pub fn scaffold_app_error_when_missing_test() {
+  let dir = "build/.test_scaffold"
+  let server_dir = dir <> "/server"
+  let _ = simplifile.create_directory_all(server_dir)
   let modules = [
     scanner.MessageModule(
       module_path: "shared/todos",
@@ -77,18 +87,18 @@ pub fn validate_missing_app_error_test() {
       handler_modules: [],
     ),
   ]
-  let assert Error(errors) =
+  let assert Error(_errors) =
     scanner.validate_conventions(
       message_modules: modules,
-      server_src: "/tmp/nonexistent_server_src",
+      server_src: dir,
     )
-  let assert True =
-    list.any(errors, fn(e) {
-      case e {
-        gen_error.MissingAppError(_) -> True
-        _ -> False
-      }
-    })
+  // app_error.gleam should have been scaffolded
+  let assert Ok(content) =
+    simplifile.read(server_dir <> "/app_error.gleam")
+  let assert True = string.contains(content, "pub type AppError")
+
+  // Cleanup
+  let assert Ok(Nil) = simplifile.delete_all([dir])
 }
 
 pub fn validate_missing_handler_test() {
