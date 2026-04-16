@@ -1,5 +1,5 @@
 -module(cli_ffi).
--export([rpc/3, start_inets/0, int_to_string/1, list_each/2]).
+-export([rpc/3, start_inets/0, int_to_string/1, list_each/2, parse_int/1, get_args/0]).
 
 start_inets() ->
     application:ensure_all_started(inets),
@@ -33,3 +33,13 @@ int_to_string(N) ->
 list_each(List, Fun) ->
     lists:foreach(Fun, List),
     nil.
+
+get_args() ->
+    [list_to_binary(A) || A <- init:get_plain_arguments()].
+
+parse_int(Bin) ->
+    try
+        {ok, binary_to_integer(Bin)}
+    catch
+        _:_ -> {error, nil}
+    end.

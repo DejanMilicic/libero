@@ -1,7 +1,12 @@
 /// CLI client for the todos example.
-/// Sends MsgFromClient messages to the server via HTTP POST and
-/// prints the MsgFromServer responses. No libero dependency needed —
-/// just native ETF encoding over HTTP.
+/// Sends MsgFromClient messages to the server via HTTP POST.
+/// No libero dependency — just native ETF encoding over HTTP.
+///
+/// Usage:
+///   gleam run -- list
+///   gleam run -- create "Buy milk"
+///   gleam run -- toggle 1
+///   gleam run -- delete 1
 
 import gleam/io
 import gleam/string
@@ -10,92 +15,82 @@ import shared/todos.{
   TodoFailed, TodoParams, Toggle, Toggled,
 }
 
+const url = "http://localhost:8080/rpc"
+
+const module = "shared/todos"
+
 pub fn main() {
-  let url = "http://localhost:8080/rpc"
-
-  io.println("=== Libero CLI Example ===")
-  io.println("Connecting to " <> url)
-  io.println("")
-
-  // Ensure inets is started for httpc
   start_inets()
-
-  // 1. Load all (should be empty or have existing items)
-  io.println("Loading all todos...")
-  let response = rpc(url, "shared/todos", LoadAll)
-  print_response(response)
-
-  // 2. Create a todo
-  io.println("Creating \"Buy milk\"...")
-  let response = rpc(url, "shared/todos", Create(TodoParams(title: "Buy milk")))
-  print_response(response)
-
-  // 3. Create another
-  io.println("Creating \"Walk the dog\"...")
-  let response =
-    rpc(url, "shared/todos", Create(TodoParams(title: "Walk the dog")))
-  print_response(response)
-
-  // 4. Load all again
-  io.println("Loading all todos...")
-  let response = rpc(url, "shared/todos", LoadAll)
-  print_response(response)
-
-  // 5. Toggle todo 1
-  io.println("Toggling todo 1...")
-  let response = rpc(url, "shared/todos", Toggle(id: 1))
-  print_response(response)
-
-  // 6. Delete todo 2
-  io.println("Deleting todo 2...")
-  let response = rpc(url, "shared/todos", Delete(id: 2))
-  print_response(response)
-
-  // 7. Final state
-  io.println("Final state:")
-  let response = rpc(url, "shared/todos", LoadAll)
-  print_response(response)
+  case get_args() {
+    ["list"] -> do_list()
+    ["create", title] -> do_create(title)
+    ["toggle", id_str] -> do_with_id("toggle", id_str, fn(id) { Toggle(id:) })
+    ["delete", id_str] -> do_with_id("delete", id_str, fn(id) { Delete(id:) })
+    _ -> {
+      io.println_error("Usage:")
+      io.println_error("  gleam run -- list")
+      io.println_error("  gleam run -- create <title>")
+      io.println_error("  gleam run -- toggle <id>")
+      io.println_error("  gleam run -- delete <id>")
+      halt(1)
+    }
+  }
 }
 
-fn print_response(result: Result(MsgFromServer, String)) {
-  case result {
-    Ok(msg) -> {
-      case msg {
-        AllLoaded(items) -> {
-          case items {
-            [] -> io.println("  (empty)")
-            _ ->
-              items
-              |> list_each(fn(item) {
-                let check = case item.completed {
-                  True -> "[x]"
-                  False -> "[ ]"
-                }
-                io.println(
-                  "  "
-                  <> check
-                  <> " #"
-                  <> int_to_string(item.id)
-                  <> " "
-                  <> item.title,
-                )
-              })
-          }
-        }
-        Created(item) ->
-          io.println(
-            "  Created: #"
-            <> int_to_string(item.id)
-            <> " "
-            <> item.title,
-          )
-        Toggled(item) -> {
+fn do_list() {
+  case rpc(url, module, LoadAll) {
+    Ok(AllLoaded(items)) ->
+      case items {
+        [] -> io.println("No todos.")
+        _ ->
+          list_each(items, fn(item) {
+            let check = case item.completed {
+              True -> "[x]"
+              False -> "[ ]"
+            }
+            io.println(
+              check
+              <> " #"
+              <> int_to_string(item.id)
+              <> " "
+              <> item.title,
+            )
+          })
+      }
+    Ok(other) -> io.println_error("Unexpected: " <> string.inspect(other))
+    Error(reason) -> io.println_error("Error: " <> reason)
+  }
+}
+
+fn do_create(title: String) {
+  case rpc(url, module, Create(TodoParams(title:))) {
+    Ok(Created(item)) ->
+      io.println(
+        "Created #" <> int_to_string(item.id) <> " " <> item.title,
+      )
+    Ok(TodoFailed(err)) ->
+      io.println_error("Failed: " <> string.inspect(err))
+    Ok(other) -> io.println_error("Unexpected: " <> string.inspect(other))
+    Error(reason) -> io.println_error("Error: " <> reason)
+  }
+}
+
+fn do_with_id(
+  action: String,
+  id_str: String,
+  msg_fn: fn(Int) -> todos.MsgFromClient,
+) {
+  case parse_int(id_str) {
+    Error(Nil) -> io.println_error("Invalid id: " <> id_str)
+    Ok(id) ->
+      case rpc(url, module, msg_fn(id)) {
+        Ok(Toggled(item)) -> {
           let status = case item.completed {
             True -> "completed"
             False -> "active"
           }
           io.println(
-            "  Toggled: #"
+            "Toggled #"
             <> int_to_string(item.id)
             <> " "
             <> item.title
@@ -104,22 +99,20 @@ fn print_response(result: Result(MsgFromServer, String)) {
             <> ")",
           )
         }
-        Deleted(id:) -> io.println("  Deleted: #" <> int_to_string(id))
-        TodoFailed(err) ->
-          io.println("  Failed: " <> string.inspect(err))
+        Ok(Deleted(id:)) ->
+          io.println("Deleted #" <> int_to_string(id))
+        Ok(TodoFailed(err)) ->
+          io.println_error("Failed: " <> string.inspect(err))
+        Ok(other) ->
+          io.println_error("Unexpected: " <> string.inspect(other))
+        Error(reason) ->
+          io.println_error(action <> " error: " <> reason)
       }
-      io.println("")
-    }
-    Error(reason) -> {
-      io.println("  ERROR: " <> reason)
-      io.println("")
-    }
   }
 }
 
 // -- Erlang FFI --
 
-/// Send a MsgFromClient to the server via HTTP POST, receive MsgFromServer.
 @external(erlang, "cli_ffi", "rpc")
 fn rpc(
   url: String,
@@ -135,3 +128,12 @@ fn int_to_string(n: Int) -> String
 
 @external(erlang, "cli_ffi", "list_each")
 fn list_each(items: List(a), f: fn(a) -> Nil) -> Nil
+
+@external(erlang, "cli_ffi", "parse_int")
+fn parse_int(s: String) -> Result(Int, Nil)
+
+@external(erlang, "cli_ffi", "get_args")
+fn get_args() -> List(String)
+
+@external(erlang, "erlang", "halt")
+fn halt(code: Int) -> Nil
