@@ -12,7 +12,7 @@ pub fn send_to_server(
   on_response on_response: fn(Dynamic) -> msg,
 ) -> Effect(msg) {
   rpc_register.register_all()
-  rpc.send_to_server(
+  rpc.send(
     url: rpc_config.ws_url(),
     module: "shared/todos",
     msg: msg,
