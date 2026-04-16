@@ -36,7 +36,7 @@ pub type Msg {
 
 pub fn init(_flags: Nil) -> #(Model, Effect(Msg)) {
   let subscribe =
-    rpc.on_push(handler: fn(raw: Dynamic) {
+    rpc.update_from_server(handler: fn(raw: Dynamic) {
       GotPush(wire.coerce(raw))
     })
   #(

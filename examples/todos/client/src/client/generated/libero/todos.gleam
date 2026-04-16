@@ -20,11 +20,11 @@ pub fn send_to_server(
   )
 }
 
-pub fn on_push(
+pub fn update_from_server(
   handler handler: fn(Dynamic) -> msg,
 ) -> Effect(msg) {
   rpc_register.register_all()
-  rpc.on_push(
+  rpc.update_from_server(
     module: "shared/todos",
     handler: handler,
   )

@@ -36,10 +36,10 @@ pub fn send(
   })
 }
 
-/// Register a handler for server-initiated push messages on a module.
+/// Handle server-initiated push messages on a module.
 /// When the server pushes a MsgFromServer without a prior request,
 /// the callback wraps it into a Lustre Msg for dispatch.
-pub fn on_push(
+pub fn update_from_server(
   module module: String,
   handler handler: fn(Dynamic) -> msg,
 ) -> Effect(msg) {
