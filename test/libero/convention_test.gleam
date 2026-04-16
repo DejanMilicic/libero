@@ -1,4 +1,5 @@
 import gleam/list
+import gleam/option
 import libero/gen_error
 import libero/scanner
 
@@ -33,12 +34,14 @@ pub fn validate_todos_example_passes_test() {
     scanner.scan_message_modules(
       shared_src: "examples/todos/shared/src/shared",
     )
-  let errors =
+  let assert Ok(updated_modules) =
     scanner.validate_conventions(
       message_modules: modules,
       server_src: "examples/todos/server/src",
     )
-  let assert True = list.is_empty(errors)
+  // Handler should be discovered
+  let assert [m] = updated_modules
+  let assert True = m.handler_module == option.Some("server/store")
 }
 
 pub fn validate_missing_shared_state_test() {
@@ -48,9 +51,10 @@ pub fn validate_missing_shared_state_test() {
       file_path: "/tmp/todos.gleam",
       has_msg_from_client: True,
       has_msg_from_server: True,
+      handler_module: option.None,
     ),
   ]
-  let errors =
+  let assert Error(errors) =
     scanner.validate_conventions(
       message_modules: modules,
       server_src: "/tmp/nonexistent_server_src",
@@ -71,9 +75,10 @@ pub fn validate_missing_app_error_test() {
       file_path: "/tmp/todos.gleam",
       has_msg_from_client: True,
       has_msg_from_server: True,
+      handler_module: option.None,
     ),
   ]
-  let errors =
+  let assert Error(errors) =
     scanner.validate_conventions(
       message_modules: modules,
       server_src: "/tmp/nonexistent_server_src",
@@ -94,9 +99,10 @@ pub fn validate_missing_handler_test() {
       file_path: "/tmp/todos.gleam",
       has_msg_from_client: True,
       has_msg_from_server: True,
+      handler_module: option.None,
     ),
   ]
-  let errors =
+  let assert Error(errors) =
     scanner.validate_conventions(
       message_modules: modules,
       server_src: "/tmp/nonexistent_server_src",

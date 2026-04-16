@@ -3,11 +3,14 @@
 //// Discovers modules in the shared package that export `MsgFromClient` or
 //// `MsgFromServer` custom types, and validates that the server package
 //// follows the required conventions (handler modules, shared state, etc.).
+//// Handlers are discovered by scanning server source for modules that export
+//// `pub fn update_from_client` and matching via the first parameter's type.
 
 import glance
 import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/list
+import gleam/option
 import gleam/result
 import gleam/string
 import libero/gen_error.{
@@ -29,6 +32,20 @@ pub type MessageModule {
     has_msg_from_client: Bool,
     /// Whether this module exports a MsgFromServer type
     has_msg_from_server: Bool,
+    /// The server module that handles MsgFromClient for this message module,
+    /// e.g. "server/store". None if no handler found or not applicable.
+    handler_module: option.Option(String),
+  )
+}
+
+/// A discovered handler: a server module exporting `pub fn update_from_client`
+/// with the shared module path it handles (resolved from the msg parameter type).
+type DiscoveredHandler {
+  DiscoveredHandler(
+    /// The server module path, e.g. "server/store"
+    handler_module: String,
+    /// The shared module path this handler serves, e.g. "shared/todos"
+    shared_module: String,
   )
 }
 
@@ -94,7 +111,125 @@ fn parse_message_module(
     file_path: file_path,
     has_msg_from_client: has_msg_from_client,
     has_msg_from_server: has_msg_from_server,
+    handler_module: option.None,
   ))
+}
+
+// ---------- Handler discovery ----------
+
+/// Scan server source for modules that export `pub fn update_from_client`.
+/// For each such function, resolve the first parameter's type annotation to
+/// determine which shared message module it handles.
+fn scan_handlers(
+  server_src server_src: String,
+) -> Result(List(DiscoveredHandler), List(GenError)) {
+  let files =
+    walk_directory(path: server_src)
+    |> result.map_error(fn(cause) { [cause] })
+  use files <- result.try(files)
+  Ok(list.filter_map(files, fn(file_path) {
+    parse_handler(file_path: file_path)
+  }))
+}
+
+/// Parse a single server source file looking for `pub fn update_from_client`.
+/// If found, resolve the first parameter's type to a shared module path.
+fn parse_handler(
+  file_path file_path: String,
+) -> Result(DiscoveredHandler, Nil) {
+  use content <- result.try(
+    simplifile.read(file_path)
+    |> result.replace_error(Nil),
+  )
+  use parsed <- result.try(
+    glance.module(content)
+    |> result.replace_error(Nil),
+  )
+  // Find pub fn update_from_client
+  let target =
+    list.find(parsed.functions, fn(def) {
+      let glance.Definition(_, f) = def
+      f.name == "update_from_client" && f.publicity == glance.Public
+    })
+  use glance.Definition(_, func) <- result.try(target)
+  // Get first parameter's type annotation
+  use first_param <- result.try(list.first(func.parameters))
+  use type_ann <- result.try(option.to_result(first_param.type_, Nil))
+  // Resolve the type to a shared module path
+  use shared_module <- result.try(
+    resolve_msg_type(
+      type_ann: type_ann,
+      imports: parsed.imports,
+    ),
+  )
+  let handler_module = derive_module_path(file_path: file_path)
+  Ok(DiscoveredHandler(
+    handler_module: handler_module,
+    shared_module: shared_module,
+  ))
+}
+
+/// Resolve a type annotation to the shared module path it refers to.
+/// Handles both qualified (`todos.MsgFromClient`) and unqualified
+/// (`MsgFromClient`) references.
+fn resolve_msg_type(
+  type_ann type_ann: glance.Type,
+  imports imports: List(glance.Definition(glance.Import)),
+) -> Result(String, Nil) {
+  case type_ann {
+    glance.NamedType(name: "MsgFromClient", module: option.Some(qualifier), ..) ->
+      // Qualified: e.g. `todos.MsgFromClient` - find import matching qualifier
+      resolve_qualified(qualifier: qualifier, imports: imports)
+    glance.NamedType(name: "MsgFromClient", module: option.None, ..) ->
+      // Unqualified: find which import has MsgFromClient in unqualified_types
+      resolve_unqualified(type_name: "MsgFromClient", imports: imports)
+    _ -> Error(Nil)
+  }
+}
+
+/// Resolve a qualified type reference like `todos.MsgFromClient`.
+/// The qualifier matches either an import alias or the last segment of the
+/// import module path.
+fn resolve_qualified(
+  qualifier qualifier: String,
+  imports imports: List(glance.Definition(glance.Import)),
+) -> Result(String, Nil) {
+  list.find_map(imports, fn(def) {
+    let glance.Definition(_, imp) = def
+    let matches = case imp.alias {
+      option.Some(glance.Named(alias_name)) -> alias_name == qualifier
+      option.Some(glance.Discarded(_)) -> False
+      option.None -> {
+        // Default qualifier is last segment of module path
+        let segments = string.split(imp.module, "/")
+        case list.last(segments) {
+          Ok(last) -> last == qualifier
+          Error(Nil) -> False
+        }
+      }
+    }
+    case matches {
+      True -> Ok(imp.module)
+      False -> Error(Nil)
+    }
+  })
+}
+
+/// Resolve an unqualified type reference like `MsgFromClient`.
+/// Search unqualified_types across all imports.
+fn resolve_unqualified(
+  type_name type_name: String,
+  imports imports: List(glance.Definition(glance.Import)),
+) -> Result(String, Nil) {
+  list.find_map(imports, fn(def) {
+    let glance.Definition(_, imp) = def
+    let has_type =
+      list.any(imp.unqualified_types, fn(uq) { uq.name == type_name })
+    case has_type {
+      True -> Ok(imp.module)
+      False -> Error(Nil)
+    }
+  })
 }
 
 // ---------- Source discovery ----------
@@ -185,14 +320,16 @@ pub fn derive_module_path(file_path file_path: String) -> String {
 /// code generation:
 /// 1. `server/shared_state.gleam` exists
 /// 2. `server/app_error.gleam` exists
-/// 3. For each message module with `has_msg_from_client`, a handler exists at
-///    `server/handlers/<module_segment>.gleam`
+/// 3. For each message module with `has_msg_from_client`, a server module
+///    exports `pub fn update_from_client` with the correct msg type
 ///
-/// Returns a list of errors (empty list means all conventions are satisfied).
+/// Returns `Ok(#(updated_modules, errors))` where updated_modules have
+/// `handler_module` populated from discovered handlers. Errors are fatal
+/// only if non-empty.
 pub fn validate_conventions(
   message_modules message_modules: List(MessageModule),
   server_src server_src: String,
-) -> List(GenError) {
+) -> Result(List(MessageModule), List(GenError)) {
   let shared_state_path = server_src <> "/server/shared_state.gleam"
   let app_error_path = server_src <> "/server/app_error.gleam"
 
@@ -210,30 +347,63 @@ pub fn validate_conventions(
     False -> [MissingAppError(expected_path: app_error_path)]
   }
 
-  let handler_errors =
-    list.flat_map(message_modules, fn(m) {
+  // Scan server source for handler modules
+  let handlers_result = scan_handlers(server_src: server_src)
+  let #(handlers, scan_errors) = case handlers_result {
+    Ok(h) -> #(h, [])
+    Error(errs) -> #([], errs)
+  }
+
+  // Build a dict from shared_module -> handler_module for quick lookup
+  let handler_map =
+    list.fold(handlers, dict.new(), fn(acc, h) {
+      dict.insert(acc, h.shared_module, h.handler_module)
+    })
+
+  // Match handlers to message modules and collect missing handler errors
+  let #(updated_modules, handler_errors) =
+    list.fold(message_modules, #([], []), fn(acc, m) {
+      let #(modules_acc, errors_acc) = acc
       case m.has_msg_from_client {
-        False -> []
+        False -> {
+          let updated = MessageModule(..m, handler_module: option.None)
+          #([updated, ..modules_acc], errors_acc)
+        }
         True -> {
-          let segment = last_module_segment(module_path: m.module_path)
-          let handler_path =
-            server_src <> "/server/handlers/" <> segment <> ".gleam"
-          let handler_exists =
-            simplifile.is_file(handler_path) |> result.unwrap(or: False)
-          case handler_exists {
-            True -> []
-            False -> [
-              MissingHandler(
-                message_module: m.module_path,
-                expected_path: handler_path,
-              ),
-            ]
+          case dict.get(handler_map, m.module_path) {
+            Ok(handler) -> {
+              let updated =
+                MessageModule(..m, handler_module: option.Some(handler))
+              #([updated, ..modules_acc], errors_acc)
+            }
+            Error(Nil) -> {
+              let err =
+                MissingHandler(
+                  message_module: m.module_path,
+                  expected: "a server module exporting pub fn update_from_client with msg: "
+                    <> m.module_path
+                    <> ".MsgFromClient",
+                )
+              let updated = MessageModule(..m, handler_module: option.None)
+              #([updated, ..modules_acc], [err, ..errors_acc])
+            }
           }
         }
       }
     })
 
-  list.flatten([shared_state_errors, app_error_errors, handler_errors])
+  let all_errors =
+    list.flatten([
+      shared_state_errors,
+      app_error_errors,
+      scan_errors,
+      list.reverse(handler_errors),
+    ])
+
+  case all_errors {
+    [] -> Ok(list.reverse(updated_modules))
+    _ -> Error(all_errors)
+  }
 }
 
 /// Extract the last path segment from a module path.

@@ -12,7 +12,7 @@ pub type GenError {
   TypeNotFound(module_path: String, type_name: String)
   MissingSharedState(expected_path: String)
   MissingAppError(expected_path: String)
-  MissingHandler(message_module: String, expected_path: String)
+  MissingHandler(message_module: String, expected: String)
   NoMessageModules(shared_path: String)
 }
 
@@ -56,13 +56,12 @@ pub fn print_error(err: GenError) -> Nil {
       <> expected_path
       <> "`"
       <> "\n  create a module exporting the `AppError` type"
-    MissingHandler(message_module, expected_path) ->
+    MissingHandler(message_module, expected) ->
       "missing handler for message module `"
       <> message_module
-      <> "`: expected at `"
-      <> expected_path
-      <> "`"
-      <> "\n  create a handler module with a `update_from_client` function"
+      <> "`: expected "
+      <> expected
+      <> "\n  create a server module exporting `pub fn update_from_client` with the correct type annotation"
     NoMessageModules(shared_path) ->
       "no message modules found under `"
       <> shared_path

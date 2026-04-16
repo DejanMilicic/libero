@@ -74,72 +74,68 @@ fn run(
   )
 
   let server_src = option.unwrap(config.server_src, "src")
-  let validation_errors =
+  use message_modules <- result.try(
     scanner.validate_conventions(
       message_modules: message_modules,
       server_src: server_src,
+    ),
+  )
+  use discovered <- result.try(
+    walker.walk_message_registry_types(
+      message_modules: message_modules,
+      module_files: module_files,
+    ),
+  )
+  io.println(
+    "libero: discovered "
+    <> int.to_string(list.length(discovered))
+    <> " type variant(s) for registration",
+  )
+
+  // Generate server dispatch module.
+  use _ <- result.try(
+    codegen.write_dispatch(
+      message_modules: message_modules,
+      server_generated: config.server_generated,
+      atoms_module: config.atoms_module,
     )
-  case validation_errors {
-    [_, ..] -> Error(validation_errors)
-    [] -> {
-      use discovered <- result.try(
-        walker.walk_message_registry_types(
-          message_modules: message_modules,
-          module_files: module_files,
-        ),
-      )
-      io.println(
-        "libero: discovered "
-        <> int.to_string(list.length(discovered))
-        <> " type variant(s) for registration",
-      )
+    |> result.map_error(fn(e) { [e] }),
+  )
 
-      // Generate server dispatch module.
-      use _ <- result.try(
-        codegen.write_dispatch(
-          message_modules: message_modules,
-          server_generated: config.server_generated,
-          atoms_module: config.atoms_module,
-        )
-        |> result.map_error(fn(e) { [e] }),
-      )
+  // Generate client send stubs.
+  use _ <- result.try(
+    codegen.write_send_functions(
+      message_modules: message_modules,
+      client_generated: config.client_generated,
+    ),
+  )
 
-      // Generate client send stubs.
-      use _ <- result.try(
-        codegen.write_send_functions(
-          message_modules: message_modules,
-          client_generated: config.client_generated,
-        ),
-      )
+  // Generate server push wrappers.
+  use _ <- result.try(
+    codegen.write_push_wrappers(
+      message_modules: message_modules,
+      server_generated: config.server_generated,
+    ),
+  )
 
-      // Generate server push wrappers.
-      use _ <- result.try(
-        codegen.write_push_wrappers(
-          message_modules: message_modules,
-          server_generated: config.server_generated,
-        ),
-      )
+  // Generate WebSocket config module.
+  use _ <- result.try(
+    codegen.write_config(config: config)
+    |> result.map_error(fn(e) { [e] }),
+  )
 
-      // Generate WebSocket config module.
-      use _ <- result.try(
-        codegen.write_config(config: config)
-        |> result.map_error(fn(e) { [e] }),
-      )
+  // Generate client-side type registration (gleam + mjs).
+  use _ <- result.try(
+    codegen.write_register(config: config, discovered: discovered),
+  )
 
-      // Generate client-side type registration (gleam + mjs).
-      use _ <- result.try(
-        codegen.write_register(config: config, discovered: discovered),
-      )
+  // Generate Erlang atom pre-registration module.
+  use _ <- result.try(
+    codegen.write_atoms(config: config, discovered: discovered)
+    |> result.map_error(fn(e) { [e] }),
+  )
 
-      // Generate Erlang atom pre-registration module.
-      use _ <- result.try(
-        codegen.write_atoms(config: config, discovered: discovered)
-        |> result.map_error(fn(e) { [e] }),
-      )
-
-      Ok(list.length(message_modules))
-    }
-  }
+  Ok(list.length(message_modules))
 }
 
 @external(erlang, "erlang", "halt")
