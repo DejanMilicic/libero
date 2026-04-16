@@ -37,11 +37,10 @@ pub fn walk_discovers_toclient_variants_test() {
       module_files: module_files,
     )
   let names = list.map(discovered, fn(v) { v.variant_name })
-  let assert True = list.contains(names, "Created")
-  let assert True = list.contains(names, "Toggled")
-  let assert True = list.contains(names, "Deleted")
-  let assert True = list.contains(names, "AllLoaded")
-  let assert True = list.contains(names, "TodoFailed")
+  let assert True = list.contains(names, "TodoCreated")
+  let assert True = list.contains(names, "TodoToggled")
+  let assert True = list.contains(names, "TodoDeleted")
+  let assert True = list.contains(names, "TodosLoaded")
 }
 
 pub fn walk_discovers_transitive_types_test() {

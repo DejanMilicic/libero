@@ -1,8 +1,9 @@
 import client/generated/libero/todos as rpc
 import gleam/dynamic.{type Dynamic}
 import gleam/list
-import gleam/string
-import libero/error.{type RpcError, AppError, InternalError}
+import libero/remote_data.{
+  type RemoteData, Failure, Loading, NotAsked, Success, to_remote,
+}
 import libero/wire
 import lustre
 import lustre/attribute
@@ -11,14 +12,26 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import shared/todos.{
-  type MsgFromServer, type Todo, AllLoaded, Created, Deleted, TodoFailed,
-  Create, Delete, LoadAll, Toggle, TodoParams, Toggled,
+  type MsgFromServer, type Todo, Create, Delete, LoadAll, NotFound,
+  TitleRequired, TodoParams, TodosLoaded, Toggle,
 }
 
 // ---- Model ----
+//
+// `items` uses RemoteData so the view can show "loading" before the
+// initial fetch resolves and a typed error if it fails. Mutating
+// actions (Create, Toggle, Delete) update `last_action` so the view
+// can show optimistic state or surface the most recent error - whichever
+// is most useful for the demo. Real apps typically thread the action's
+// RemoteData through the field whose UI it controls (e.g. a per-row
+// `delete_status` to disable individual delete buttons).
 
 pub type Model {
-  Model(items: List(Todo), input: String, error: String)
+  Model(
+    items: RemoteData(List(Todo), String),
+    input: String,
+    last_action: RemoteData(Nil, String),
+  )
 }
 
 // ---- Msg ----
@@ -28,7 +41,10 @@ pub type Msg {
   Submit
   ToggleClicked(Int)
   DeleteClicked(Int)
-  GotResponse(Result(MsgFromServer, RpcError(todos.TodoError)))
+  TodosLoadedMsg(RemoteData(List(Todo), String))
+  TodoCreatedMsg(RemoteData(Todo, String))
+  TodoToggledMsg(RemoteData(Todo, String))
+  TodoDeletedMsg(RemoteData(Int, String))
   GotPush(MsgFromServer)
 }
 
@@ -40,9 +56,45 @@ pub fn init(_flags: Nil) -> #(Model, Effect(Msg)) {
       GotPush(wire.coerce(raw))
     })
   #(
-    Model(items: [], input: "", error: ""),
-    effect.batch([send(LoadAll), subscribe]),
+    Model(items: Loading, input: "", last_action: NotAsked),
+    effect.batch([load_all(), subscribe]),
   )
+}
+
+// ---- Effects ----
+
+fn load_all() -> Effect(Msg) {
+  rpc.send_to_server(msg: LoadAll, on_response: fn(raw) {
+    TodosLoadedMsg(to_remote(raw, format_todo_error))
+  })
+}
+
+fn create(title: String) -> Effect(Msg) {
+  rpc.send_to_server(
+    msg: Create(params: TodoParams(title:)),
+    on_response: fn(raw) {
+      TodoCreatedMsg(to_remote(raw, format_todo_error))
+    },
+  )
+}
+
+fn toggle(id: Int) -> Effect(Msg) {
+  rpc.send_to_server(msg: Toggle(id:), on_response: fn(raw) {
+    TodoToggledMsg(to_remote(raw, format_todo_error))
+  })
+}
+
+fn delete(id: Int) -> Effect(Msg) {
+  rpc.send_to_server(msg: Delete(id:), on_response: fn(raw) {
+    TodoDeletedMsg(to_remote(raw, format_todo_error))
+  })
+}
+
+fn format_todo_error(err: todos.TodoError) -> String {
+  case err {
+    NotFound -> "Todo not found"
+    TitleRequired -> "Title is required"
+  }
 }
 
 // ---- Update ----
@@ -55,92 +107,68 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       case model.input {
         "" -> #(model, effect.none())
         title -> #(
-          Model(..model, input: ""),
-          send(Create(TodoParams(title:))),
+          Model(..model, input: "", last_action: Loading),
+          create(title),
         )
       }
     }
 
-    ToggleClicked(id) -> #(model, send(Toggle(id:)))
+    ToggleClicked(id) -> #(
+      Model(..model, last_action: Loading),
+      toggle(id),
+    )
 
-    DeleteClicked(id) -> #(model, send(Delete(id:)))
+    DeleteClicked(id) -> #(
+      Model(..model, last_action: Loading),
+      delete(id),
+    )
 
-    GotResponse(Ok(response)) -> {
-      case response {
-        AllLoaded(loaded) ->
-          #(Model(..model, items: loaded, error: ""), effect.none())
-        Created(item) ->
-          #(
-            Model(..model, items: list.append(model.items, [item]), error: ""),
-            effect.none(),
-          )
-        Toggled(item) -> {
-          let new_items =
-            list.map(model.items, fn(t) {
-              case t.id == item.id {
-                True -> item
-                False -> t
-              }
-            })
-          #(Model(..model, items: new_items, error: ""), effect.none())
-        }
-        Deleted(id) -> {
-          let new_items = list.filter(model.items, fn(t) { t.id != id })
-          #(Model(..model, items: new_items, error: ""), effect.none())
-        }
-        TodoFailed(err) -> {
-          let message = case err {
-            todos.NotFound -> "Not found"
-            todos.TitleRequired -> "Title is required"
-          }
-          #(Model(..model, error: message), effect.none())
-        }
-      }
-    }
+    // Initial load result.
+    TodosLoadedMsg(rd) -> #(Model(..model, items: rd), effect.none())
 
-    GotResponse(Error(AppError(err))) -> {
-      let message = case err {
-        todos.NotFound -> "Not found"
-        todos.TitleRequired -> "Title is required"
-      }
-      #(Model(..model, error: message), effect.none())
-    }
+    // Mutating actions: collapse Success into Nil because the push
+    // message will refresh `items`. We keep the RemoteData state for
+    // the view to render disabled buttons or surface a domain error.
+    TodoCreatedMsg(rd) -> #(
+      Model(..model, last_action: remote_data.map(rd, fn(_) { Nil })),
+      effect.none(),
+    )
+    TodoToggledMsg(rd) -> #(
+      Model(..model, last_action: remote_data.map(rd, fn(_) { Nil })),
+      effect.none(),
+    )
+    TodoDeletedMsg(rd) -> #(
+      Model(..model, last_action: remote_data.map(rd, fn(_) { Nil })),
+      effect.none(),
+    )
 
-    GotResponse(Error(InternalError(_, message))) ->
-      #(Model(..model, error: message), effect.none())
-
-    GotResponse(Error(_)) ->
-      #(Model(..model, error: "Something went wrong"), effect.none())
-
-    GotPush(AllLoaded(items)) ->
-      #(Model(..model, items: items, error: ""), effect.none())
-
+    // Server-pushed update (e.g. another client mutated the list).
+    // Push messages keep the MsgFromServer envelope so we can route by
+    // variant.
+    GotPush(TodosLoaded(Ok(items))) -> #(
+      Model(..model, items: Success(items)),
+      effect.none(),
+    )
     GotPush(_) -> #(model, effect.none())
   }
-}
-
-fn send(msg: todos.MsgFromClient) -> Effect(Msg) {
-  log("send: " <> string.inspect(msg))
-  rpc.send_to_server(msg:, on_response: fn(raw: Dynamic) {
-    let response = wire.coerce(raw)
-    log("recv: " <> string.inspect(response))
-    GotResponse(response)
-  })
 }
 
 // ---- View ----
 
 pub fn view(model: Model) -> Element(Msg) {
   html.div(
-    [attribute.styles([#("max-width", "400px"), #("margin", "2em auto"), #("font-family", "system-ui, sans-serif")])],
+    [
+      attribute.styles([
+        #("max-width", "400px"),
+        #("margin", "2em auto"),
+        #("font-family", "system-ui, sans-serif"),
+      ]),
+    ],
     [
       html.h1([], [element.text("Todos")]),
       view_input(model),
-      case model.error {
-        "" -> element.none()
-        msg -> html.p([attribute.style("color", "red")], [element.text(msg)])
-      },
-      view_list(model.items),
+      view_action_status(model.last_action),
+      view_items(model.items),
     ],
   )
 }
@@ -167,6 +195,24 @@ fn view_input(model: Model) -> Element(Msg) {
   )
 }
 
+fn view_action_status(rd: RemoteData(Nil, String)) -> Element(Msg) {
+  case rd {
+    Failure(message) ->
+      html.p([attribute.style("color", "red")], [element.text(message)])
+    _ -> element.none()
+  }
+}
+
+fn view_items(items: RemoteData(List(Todo), String)) -> Element(Msg) {
+  case items {
+    NotAsked | Loading ->
+      html.p([attribute.style("opacity", "0.5")], [element.text("Loading...")])
+    Failure(message) ->
+      html.p([attribute.style("color", "red")], [element.text(message)])
+    Success(todos) -> view_list(todos)
+  }
+}
+
 fn view_list(items: List(Todo)) -> Element(Msg) {
   html.ul(
     [attribute.styles([#("list-style", "none"), #("padding", "0")])],
@@ -180,28 +226,41 @@ fn view_item(item: Todo) -> Element(Msg) {
     False -> []
   }
   html.li(
-    [attribute.styles([#("display", "flex"), #("align-items", "center"), #("gap", "0.5em"), #("padding", "0.5em 0")])],
+    [
+      attribute.styles([
+        #("display", "flex"),
+        #("align-items", "center"),
+        #("gap", "0.5em"),
+        #("padding", "0.5em 0"),
+      ]),
+    ],
     [
       html.span(
         [
           event.on_click(ToggleClicked(item.id)),
-          attribute.styles([#("cursor", "pointer"), #("flex", "1"), ..text_styles]),
+          attribute.styles([
+            #("cursor", "pointer"),
+            #("flex", "1"),
+            ..text_styles
+          ]),
         ],
         [element.text(item.title)],
       ),
       html.button(
         [
           event.on_click(DeleteClicked(item.id)),
-          attribute.styles([#("cursor", "pointer"), #("border", "none"), #("background", "none"), #("color", "red")]),
+          attribute.styles([
+            #("cursor", "pointer"),
+            #("border", "none"),
+            #("background", "none"),
+            #("color", "red"),
+          ]),
         ],
         [element.text("x")],
       ),
     ],
   )
 }
-
-@external(javascript, "../client_ffi.mjs", "log")
-fn log(msg: String) -> Nil
 
 pub fn main() {
   let app = lustre.application(init, update, view)

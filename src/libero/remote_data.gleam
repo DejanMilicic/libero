@@ -1,0 +1,119 @@
+//// Typed states for async data loading.
+//// Inspired by Elm's RemoteData package.
+////
+//// Use instead of Bool flags + Option fields for data that loads asynchronously.
+//// The view pattern matches directly on the state - impossible to show stale
+//// data while loading or forget to handle errors.
+////
+//// `to_remote` is the bridge from a libero RPC response (a Dynamic value
+//// shipped from the server) to a `RemoteData` value the page stores in
+//// its model. It collapses three wire outcomes - domain success, domain
+//// failure, framework failure - into the two post-response states
+//// (`Success` or `Failure`). The `NotAsked` and `Loading` states are
+//// page-lifecycle concerns the page sets itself in `init` and `update`.
+
+import gleam/dynamic.{type Dynamic}
+import gleam/option.{type Option, None, Some}
+import gleam/string
+import libero/error.{type RpcError}
+import libero/wire
+
+pub type RemoteData(value, error) {
+  NotAsked
+  Loading
+  Failure(error)
+  Success(value)
+}
+
+/// Apply a function to the success value.
+pub fn map(
+  data data: RemoteData(a, e),
+  transform transform: fn(a) -> b,
+) -> RemoteData(b, e) {
+  case data {
+    NotAsked -> NotAsked
+    Loading -> Loading
+    Failure(error) -> Failure(error)
+    Success(value) -> Success(transform(value))
+  }
+}
+
+/// Apply a function to the error value.
+pub fn map_error(
+  data data: RemoteData(a, e1),
+  transform transform: fn(e1) -> e2,
+) -> RemoteData(a, e2) {
+  case data {
+    NotAsked -> NotAsked
+    Loading -> Loading
+    Failure(error) -> Failure(transform(error))
+    Success(value) -> Success(value)
+  }
+}
+
+/// Extract the success value, or return a default.
+pub fn unwrap(data data: RemoteData(a, e), default default: a) -> a {
+  case data {
+    Success(value) -> value
+    _ -> default
+  }
+}
+
+/// Convert to Option - Some for Success, None for everything else.
+pub fn to_option(data: RemoteData(a, e)) -> Option(a) {
+  case data {
+    Success(value) -> Some(value)
+    _ -> None
+  }
+}
+
+/// Check if the data is loaded successfully.
+pub fn is_success(data: RemoteData(a, e)) -> Bool {
+  case data {
+    Success(_) -> True
+    _ -> False
+  }
+}
+
+/// Check if the data is currently loading.
+pub fn is_loading(data: RemoteData(a, e)) -> Bool {
+  case data {
+    Loading -> True
+    _ -> False
+  }
+}
+
+/// Convert a libero RPC response (Dynamic) into a `RemoteData` value.
+///
+/// The server-side dispatch unwraps the `MsgFromServer` envelope so the
+/// wire response is `Result(Result(payload, domain_err), RpcError(app_err))`.
+/// This helper collapses that into the two post-response states.
+///
+/// The `format_domain` callback formats domain errors (which the page
+/// owns and pattern-matches on its specific error type). Framework
+/// errors (internal, unknown function, malformed request, server
+/// AppError) are formatted by libero's default formatter.
+pub fn to_remote(
+  raw raw: Dynamic,
+  format_domain format_domain: fn(domain) -> String,
+) -> RemoteData(payload, String) {
+  let response: Result(Result(payload, domain), RpcError(app)) =
+    wire.coerce(raw)
+  case response {
+    Ok(Ok(payload)) -> Success(payload)
+    Ok(Error(domain_err)) -> Failure(format_domain(domain_err))
+    Error(rpc_err) -> Failure(format_rpc_error(rpc_err))
+  }
+}
+
+/// Default formatter for framework-level RPC errors.
+/// Domain errors travel inside `Ok(Error(domain))` and are formatted
+/// by the caller's `format_domain` function.
+fn format_rpc_error(err: RpcError(a)) -> String {
+  case err {
+    error.AppError(value) -> "Server error: " <> string.inspect(value)
+    error.InternalError(_, message) -> message
+    error.UnknownFunction(name) -> "Unknown RPC: " <> name
+    error.MalformedRequest -> "Malformed request"
+  }
+}

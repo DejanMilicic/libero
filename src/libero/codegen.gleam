@@ -164,7 +164,10 @@ fn dispatch(
 ) -> #(BitArray, Option(PanicInfo), SharedState) {
   case trace.try_call(call) {
     Ok(Ok(#(value, new_state))) ->
-      #(wire.tag_response(wire.encode(Ok(value))), None, new_state)
+      // Strip the MsgFromServer envelope - the FIFO response/request
+      // pairing on the client makes the variant tag redundant. The wire
+      // ships the payload directly as Result(payload, RpcError).
+      #(wire.tag_response(wire.encode(Ok(wire.unwrap_response(value)))), None, new_state)
     Ok(Error(app_err)) ->
       #(wire.tag_response(wire.encode(Error(error.AppError(app_err)))), None, state)
     Error(reason) -> {

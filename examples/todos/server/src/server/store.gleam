@@ -7,9 +7,9 @@ import server/app_error.{type AppError}
 import server/generated/libero/todos as todos_push
 import server/shared_state.{type SharedState}
 import shared/todos.{
-  type MsgFromClient, type MsgFromServer, type Todo, AllLoaded, Create, Created,
-  Delete, Deleted, LoadAll, NotFound, TitleRequired, Todo, TodoFailed, Toggle,
-  Toggled,
+  type MsgFromClient, type MsgFromServer, type Todo, Create, Delete, LoadAll,
+  NotFound, TitleRequired, Todo, TodoCreated, TodoDeleted, TodoToggled,
+  TodosLoaded, Toggle,
 }
 
 /// Create the ETS table. Call once at server boot.
@@ -55,6 +55,11 @@ pub fn delete(id id: Int) -> Result(Nil, Nil) {
 }
 
 /// Handle an RPC message from the client.
+///
+/// Domain errors (NotFound, TitleRequired) are wrapped in the response
+/// variant's `Result` so the client surfaces them through `RemoteData`
+/// just like successes. Reserve `AppError` for framework-level failures
+/// (corrupt state, missing dependency).
 pub fn update_from_client(
   msg msg: MsgFromClient,
   state state: SharedState,
@@ -62,33 +67,42 @@ pub fn update_from_client(
   case msg {
     Create(params:) -> {
       case params.title {
-        "" -> Ok(#(TodoFailed(TitleRequired), state))
+        "" -> Ok(#(TodoCreated(Error(TitleRequired)), state))
         title -> {
           let item = insert(title:)
-          todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
-          Ok(#(Created(item), state))
+          todos_push.send_to_clients(
+            topic: "todos",
+            msg: TodosLoaded(Ok(all())),
+          )
+          Ok(#(TodoCreated(Ok(item)), state))
         }
       }
     }
     Toggle(id:) -> {
       case toggle(id:) {
         Ok(toggled) -> {
-          todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
-          Ok(#(Toggled(toggled), state))
+          todos_push.send_to_clients(
+            topic: "todos",
+            msg: TodosLoaded(Ok(all())),
+          )
+          Ok(#(TodoToggled(Ok(toggled)), state))
         }
-        Error(Nil) -> Error(NotFound)
+        Error(Nil) -> Ok(#(TodoToggled(Error(NotFound)), state))
       }
     }
     Delete(id:) -> {
       case delete(id:) {
         Ok(Nil) -> {
-          todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
-          Ok(#(Deleted(id), state))
+          todos_push.send_to_clients(
+            topic: "todos",
+            msg: TodosLoaded(Ok(all())),
+          )
+          Ok(#(TodoDeleted(Ok(id)), state))
         }
-        Error(Nil) -> Error(NotFound)
+        Error(Nil) -> Ok(#(TodoDeleted(Error(NotFound)), state))
       }
     }
-    LoadAll -> Ok(#(AllLoaded(all()), state))
+    LoadAll -> Ok(#(TodosLoaded(Ok(all())), state))
   }
 }
 

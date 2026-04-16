@@ -1,6 +1,6 @@
 /// CLI client for the todos example.
 /// Sends MsgFromClient messages to the server via HTTP POST.
-/// No libero dependency — just native ETF encoding over HTTP.
+/// No libero dependency - just native ETF encoding over HTTP.
 ///
 /// Usage:
 ///   gleam run -- list
@@ -9,10 +9,8 @@
 ///   gleam run -- delete 1
 
 import gleam/io
-import gleam/string
 import shared/todos.{
-  type MsgFromServer, AllLoaded, Create, Created, Delete, Deleted, LoadAll,
-  TodoFailed, TodoParams, Toggle, Toggled,
+  type Todo, Create, Delete, LoadAll, TodoParams, Toggle,
 }
 
 const url = "http://localhost:8080/rpc"
@@ -35,7 +33,7 @@ pub fn main() {
 }
 
 fn usage() {
-  io.println("Todos CLI — libero example using HTTP POST + native ETF")
+  io.println("Todos CLI - libero example using HTTP POST + native ETF")
   io.println("")
   io.println("Usage:")
   io.println("  gleam run -- list              List all todos")
@@ -46,39 +44,29 @@ fn usage() {
 }
 
 fn do_list() {
-  case rpc(url, module, LoadAll) {
-    Ok(AllLoaded(items)) ->
-      case items {
-        [] -> io.println("No todos.")
-        _ ->
-          list_each(items, fn(item) {
-            let check = case item.completed {
-              True -> "[x]"
-              False -> "[ ]"
-            }
-            io.println(
-              check
-              <> " #"
-              <> int_to_string(item.id)
-              <> " "
-              <> item.title,
-            )
-          })
-      }
-    Ok(other) -> io.println_error("Unexpected: " <> string.inspect(other))
+  let result: Result(List(Todo), String) = rpc(url, module, LoadAll)
+  case result {
+    Ok([]) -> io.println("No todos.")
+    Ok(items) ->
+      list_each(items, fn(item) {
+        let check = case item.completed {
+          True -> "[x]"
+          False -> "[ ]"
+        }
+        io.println(
+          check <> " #" <> int_to_string(item.id) <> " " <> item.title,
+        )
+      })
     Error(reason) -> io.println_error("Error: " <> reason)
   }
 }
 
 fn do_create(title: String) {
-  case rpc(url, module, Create(TodoParams(title:))) {
-    Ok(Created(item)) ->
-      io.println(
-        "Created #" <> int_to_string(item.id) <> " " <> item.title,
-      )
-    Ok(TodoFailed(err)) ->
-      io.println_error("Failed: " <> string.inspect(err))
-    Ok(other) -> io.println_error("Unexpected: " <> string.inspect(other))
+  let result: Result(Todo, String) =
+    rpc(url, module, Create(params: TodoParams(title:)))
+  case result {
+    Ok(item) ->
+      io.println("Created #" <> int_to_string(item.id) <> " " <> item.title)
     Error(reason) -> io.println_error("Error: " <> reason)
   }
 }
@@ -90,43 +78,47 @@ fn do_with_id(
 ) {
   case parse_int(id_str) {
     Error(Nil) -> io.println_error("Invalid id: " <> id_str)
-    Ok(id) ->
-      case rpc(url, module, msg_fn(id)) {
-        Ok(Toggled(item)) -> {
-          let status = case item.completed {
-            True -> "completed"
-            False -> "active"
+    Ok(id) -> {
+      case msg_fn(id) {
+        Toggle(id: tid) -> {
+          let result: Result(Todo, String) = rpc(url, module, Toggle(id: tid))
+          case result {
+            Ok(item) -> {
+              let status = case item.completed {
+                True -> "completed"
+                False -> "active"
+              }
+              io.println(
+                "Toggled #"
+                <> int_to_string(item.id)
+                <> " "
+                <> item.title
+                <> " ("
+                <> status
+                <> ")",
+              )
+            }
+            Error(reason) -> io.println_error(action <> " error: " <> reason)
           }
-          io.println(
-            "Toggled #"
-            <> int_to_string(item.id)
-            <> " "
-            <> item.title
-            <> " ("
-            <> status
-            <> ")",
-          )
         }
-        Ok(Deleted(id:)) ->
-          io.println("Deleted #" <> int_to_string(id))
-        Ok(TodoFailed(err)) ->
-          io.println_error("Failed: " <> string.inspect(err))
-        Ok(other) ->
-          io.println_error("Unexpected: " <> string.inspect(other))
-        Error(reason) ->
-          io.println_error(action <> " error: " <> reason)
+        Delete(id: did) -> {
+          let result: Result(Int, String) = rpc(url, module, Delete(id: did))
+          case result {
+            Ok(deleted_id) ->
+              io.println("Deleted #" <> int_to_string(deleted_id))
+            Error(reason) -> io.println_error(action <> " error: " <> reason)
+          }
+        }
+        _ -> io.println_error("Unsupported action: " <> action)
       }
+    }
   }
 }
 
 // -- Erlang FFI --
 
 @external(erlang, "cli_ffi", "rpc")
-fn rpc(
-  url: String,
-  module: String,
-  msg: a,
-) -> Result(MsgFromServer, String)
+fn rpc(url: String, module: String, msg: a) -> Result(b, String)
 
 @external(erlang, "cli_ffi", "start_inets")
 fn start_inets() -> Nil

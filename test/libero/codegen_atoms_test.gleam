@@ -44,11 +44,10 @@ pub fn walk_and_write_dispatch_atoms_test() {
   let assert True = list.contains(variant_names, "LoadAll")
 
   // MsgFromServer variants
-  let assert True = list.contains(variant_names, "Created")
-  let assert True = list.contains(variant_names, "Toggled")
-  let assert True = list.contains(variant_names, "Deleted")
-  let assert True = list.contains(variant_names, "AllLoaded")
-  let assert True = list.contains(variant_names, "TodoFailed")
+  let assert True = list.contains(variant_names, "TodoCreated")
+  let assert True = list.contains(variant_names, "TodoToggled")
+  let assert True = list.contains(variant_names, "TodoDeleted")
+  let assert True = list.contains(variant_names, "TodosLoaded")
 
   // Transitive types
   let assert True = list.contains(variant_names, "Todo")
