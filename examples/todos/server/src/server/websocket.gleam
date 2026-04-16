@@ -4,7 +4,6 @@ import gleam/io
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import libero/push
-import libero/wire
 import mist
 import server/generated/libero/dispatch
 import server/shared_state.{type SharedState}
@@ -41,14 +40,7 @@ pub fn handler(
 ) -> mist.Next(ConnState, PushMsg) {
   case message {
     mist.Binary(data) -> {
-      io.println("[ws] raw bytes: " <> string.inspect(data))
-      case wire.decode_call(data) {
-        Ok(#(module, msg)) ->
-          io.println("[ws] recv " <> module <> ": " <> string.inspect(msg))
-        Error(err) ->
-          io.println("[ws] decode error: " <> string.inspect(err))
-      }
-      let #(response_bytes, maybe_panic, _new_shared) =
+      let #(response_bytes, maybe_panic, new_shared) =
         dispatch.handle(state: state.shared, data:)
       case maybe_panic {
         Some(info) ->
@@ -56,7 +48,7 @@ pub fn handler(
         None -> Nil
       }
       let _ = mist.send_binary_frame(conn, response_bytes)
-      mist.continue(state)
+      mist.continue(ConnState(shared: new_shared))
     }
     mist.Custom(PushFrame(frame)) -> {
       let _ = mist.send_binary_frame(conn, frame)

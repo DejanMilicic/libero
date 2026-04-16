@@ -9,7 +9,7 @@
 // safe to call multiple times (only runs registration once).
 
 import { registerConstructor, registerFloatFields, setListCtors, setDictFromList, setGleamCustomType } from "../../../../libero/libero/rpc_ffi.mjs";
-import { Ok, Error, CustomType, Empty, NonEmpty } from "../../../../gleam.mjs";
+import { Ok, Error, CustomType, Empty, NonEmpty } from "../../../../gleam_stdlib/gleam.mjs";
 import { DecodeError } from "../../../../libero/libero/wire.mjs";
 import { AppError, MalformedRequest, UnknownFunction, InternalError } from "../../../../libero/libero/error.mjs";
 import { Some, None } from "../../../../gleam_stdlib/gleam/option.mjs";

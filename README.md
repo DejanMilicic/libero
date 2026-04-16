@@ -167,7 +167,7 @@ Libero's API uses a directional naming convention:
 | Direction | Client calls | Server calls |
 |---|---|---|
 | Client → Server | `send_to_server(msg:)` | `update_from_client(msg:)` |
-| Server → Client | `update_from_server(handler:)` | `todos_push.send_to_client(client_id:, ...)` / `todos_push.send_to_clients(topic:, ...)` |
+| Server → Client | `update_from_server(handler:)` | generated `send_to_client(client_id:, ...)` / `send_to_clients(topic:, ...)` |
 
 ## License
 
