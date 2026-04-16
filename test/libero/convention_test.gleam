@@ -22,8 +22,8 @@ pub fn scan_todos_example_finds_todos_module_test() {
     )
   let assert True = list.length(modules) == 1
   let assert [m] = modules
-  let assert True = m.has_to_server
-  let assert True = m.has_to_client
+  let assert True = m.has_msg_from_client
+  let assert True = m.has_msg_from_server
   // Module path should be "shared/todos"
   let assert True = m.module_path == "shared/todos"
 }
@@ -46,8 +46,8 @@ pub fn validate_missing_shared_state_test() {
     scanner.MessageModule(
       module_path: "shared/todos",
       file_path: "/tmp/todos.gleam",
-      has_to_server: True,
-      has_to_client: True,
+      has_msg_from_client: True,
+      has_msg_from_server: True,
     ),
   ]
   let errors =
@@ -69,8 +69,8 @@ pub fn validate_missing_app_error_test() {
     scanner.MessageModule(
       module_path: "shared/todos",
       file_path: "/tmp/todos.gleam",
-      has_to_server: True,
-      has_to_client: True,
+      has_msg_from_client: True,
+      has_msg_from_server: True,
     ),
   ]
   let errors =
@@ -92,8 +92,8 @@ pub fn validate_missing_handler_test() {
     scanner.MessageModule(
       module_path: "shared/todos",
       file_path: "/tmp/todos.gleam",
-      has_to_server: True,
-      has_to_client: True,
+      has_msg_from_client: True,
+      has_msg_from_server: True,
     ),
   ]
   let errors =

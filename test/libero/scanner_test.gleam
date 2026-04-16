@@ -16,12 +16,12 @@ pub fn scan_skips_generated_directory_test() {
   let assert Ok(Nil) =
     simplifile.write(
       shared_src <> "/msgs.gleam",
-      "pub type ToServer { Ping }",
+      "pub type MsgFromClient { Ping }",
     )
   let assert Ok(Nil) =
     simplifile.write(
       shared_src <> "/generated/decoy.gleam",
-      "pub type ToServer { Decoy }",
+      "pub type MsgFromClient { Decoy }",
     )
 
   let assert Ok(#(modules, _files)) =
@@ -29,7 +29,7 @@ pub fn scan_skips_generated_directory_test() {
   // Should only find msgs, not decoy
   let assert 1 = list.length(modules)
   let assert [m] = modules
-  let assert True = m.has_to_server
+  let assert True = m.has_msg_from_client
 
   // Cleanup
   let assert Ok(Nil) = simplifile.delete_all([base])
@@ -44,7 +44,7 @@ pub fn scan_skips_symlinks_test() {
   let assert Ok(Nil) =
     simplifile.write(
       shared_src <> "/msgs.gleam",
-      "pub type ToServer { Ping }",
+      "pub type MsgFromClient { Ping }",
     )
 
   // Create a symlink pointing back to parent (potential cycle)
@@ -68,7 +68,7 @@ pub fn scan_populates_module_files_for_all_gleam_files_test() {
   let assert Ok(Nil) =
     simplifile.write(
       shared_src <> "/msgs.gleam",
-      "pub type ToServer { Ping }",
+      "pub type MsgFromClient { Ping }",
     )
   let assert Ok(Nil) =
     simplifile.write(

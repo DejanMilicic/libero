@@ -97,8 +97,8 @@ pub fn walk_empty_module_files_returns_error_test() {
     scanner.MessageModule(
       module_path: "nonexistent/module",
       file_path: "/tmp/nonexistent.gleam",
-      has_to_server: True,
-      has_to_client: False,
+      has_msg_from_client: True,
+      has_msg_from_server: False,
     ),
   ]
   let assert Error(_errors) =

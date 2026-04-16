@@ -49,7 +49,7 @@ pub fn send_function_contains_module_path_test() {
   let assert Ok(content) = simplifile.read(output_dir <> "/todos.gleam")
 
   // Must import the shared type
-  let assert True = string.contains(content, "import shared/todos.{type ToServer}")
+  let assert True = string.contains(content, "import shared/todos.{type MsgFromClient}")
   // Must reference the correct module path
   let assert True = string.contains(content, "module: \"shared/todos\"")
   // Must import rpc

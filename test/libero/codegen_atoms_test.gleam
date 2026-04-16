@@ -1,6 +1,6 @@
 //// Tests for the full pipeline - walk the type graph on the todos
 //// example and verify the discovered variants include all expected
-//// constructors (ToServer, ToClient, and transitive types).
+//// constructors (MsgFromClient, MsgFromServer, and transitive types).
 
 import gleam/list
 import gleam/string
@@ -34,16 +34,16 @@ pub fn walk_and_write_dispatch_atoms_test() {
   // Dispatch must reference the atoms module
   let assert True = string.contains(dispatch, "test@rpc_atoms")
 
-  // Verify discovered variants include ToServer and ToClient constructors
+  // Verify discovered variants include MsgFromClient and MsgFromServer constructors
   let variant_names = list.map(discovered, fn(v) { v.variant_name })
 
-  // ToServer variants
+  // MsgFromClient variants
   let assert True = list.contains(variant_names, "Create")
   let assert True = list.contains(variant_names, "Toggle")
   let assert True = list.contains(variant_names, "Delete")
   let assert True = list.contains(variant_names, "LoadAll")
 
-  // ToClient variants
+  // MsgFromServer variants
   let assert True = list.contains(variant_names, "Created")
   let assert True = list.contains(variant_names, "Toggled")
   let assert True = list.contains(variant_names, "Deleted")
