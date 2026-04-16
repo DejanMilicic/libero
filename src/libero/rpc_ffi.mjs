@@ -63,6 +63,10 @@ export function setDictFromList(fn) {
   dictFromList = fn;
 }
 
+export function setGleamCustomType(ctor) {
+  GleamCustomType = ctor;
+}
+
 function arrayToGleamList(arr) {
   if (Empty === null || NonEmpty === null) {
     return arr; // standalone mode (Node REPL)
