@@ -177,7 +177,7 @@ pub fn validate_msg_from_server_multi_field_fails_test() {
   let assert Ok(Nil) = simplifile.delete_all([dir])
 }
 
-pub fn validate_msg_from_server_zero_field_fails_test() {
+pub fn validate_msg_from_server_zero_field_passes_test() {
   let dir = "build/.test_field_check_zero"
   let _ = simplifile.create_directory_all(dir)
   let path = dir <> "/bare.gleam"
@@ -198,14 +198,7 @@ pub fn validate_msg_from_server_zero_field_fails_test() {
       handler_modules: [],
     ),
   ]
-  let assert Error(errors) =
+  let assert Ok(Nil) =
     scanner.validate_msg_from_server_fields(message_modules: modules)
-  let assert True =
-    list.any(errors, fn(e) {
-      case e {
-        gen_error.MsgFromServerFieldCount(_, "Acknowledged", 0) -> True
-        _ -> False
-      }
-    })
   let assert Ok(Nil) = simplifile.delete_all([dir])
 }

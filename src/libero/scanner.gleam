@@ -455,10 +455,10 @@ pub type AppError {
   }
 }
 
-/// Validate that every MsgFromServer variant has exactly one field.
+/// Validate that every MsgFromServer variant has at most one field.
 /// Dispatch unwraps the envelope with `element(2, Tuple)` in Erlang,
-/// which silently drops extra fields. This check catches the problem
-/// at codegen time.
+/// which silently drops extra fields. Zero-field variants (bare atoms)
+/// are fine, they unwrap to Nil.
 pub fn validate_msg_from_server_fields(
   message_modules message_modules: List(MessageModule),
 ) -> Result(Nil, List(GenError)) {
@@ -492,7 +492,7 @@ fn check_variant_fields(m: MessageModule) -> List(GenError) {
               list.filter_map(ct_def.definition.variants, fn(variant) {
                 let field_count = list.length(variant.fields)
                 case field_count {
-                  1 -> Error(Nil)
+                  0 | 1 -> Error(Nil)
                   _ ->
                     Ok(MsgFromServerFieldCount(
                       module_path: m.module_path,

@@ -57,8 +57,8 @@ pub fn print_error(err: GenError) -> Nil {
       <> module_path
       <> "` has "
       <> int.to_string(field_count)
-      <> " field(s), expected exactly 1"
-      <> "\n  each MsgFromServer variant must wrap a single value so dispatch can unwrap the envelope"
+      <> " fields, expected 0 or 1"
+      <> "\n  dispatch unwraps the envelope with element(2, Tuple), which drops extra fields"
     MissingHandler(message_module, expected) ->
       "missing handler for message module `"
       <> message_module
