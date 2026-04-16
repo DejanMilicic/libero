@@ -219,8 +219,12 @@ import "
         <> m.module_path
         <> ".{type MsgFromClient}
 import libero/rpc
-import client/generated/libero/rpc_config
-import client/generated/libero/rpc_register
+import "
+        <> generated_module_path(client_generated <> "/rpc_config.gleam")
+        <> "
+import "
+        <> generated_module_path(client_generated <> "/rpc_register.gleam")
+        <> "
 import lustre/effect.{type Effect}
 
 pub fn send_to_server(
@@ -640,6 +644,25 @@ fn write_file(
       Ok(Nil)
     }
     Error(cause) -> Error(CannotWriteFile(path: path, cause: cause))
+  }
+}
+
+/// Derive a Gleam module path from a generated file path.
+/// Uses /src/ split when available, falls back to stripping .gleam extension.
+fn generated_module_path(path: String) -> String {
+  case string.split_once(path, "/src/") {
+    Ok(#(_, after_src)) ->
+      case string.ends_with(after_src, ".gleam") {
+        True ->
+          string.slice(after_src, at_index: 0, length: string.length(after_src) - 6)
+        False -> after_src
+      }
+    Error(Nil) ->
+      case string.ends_with(path, ".gleam") {
+        True ->
+          string.slice(path, at_index: 0, length: string.length(path) - 6)
+        False -> path
+      }
   }
 }
 

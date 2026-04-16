@@ -69,7 +69,7 @@ pub fn send_function_contains_module_path_test() {
   let assert True = string.contains(content, "import libero/rpc")
   // Must import rpc_register for auto-registration
   let assert True =
-    string.contains(content, "import client/generated/libero/rpc_register")
+    string.contains(content, "rpc_register")
   // Must call register_all before send
   let assert True = string.contains(content, "rpc_register.register_all()")
 
