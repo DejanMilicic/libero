@@ -27,10 +27,10 @@ pub fn leave(topic topic: String) -> Nil {
   pg_leave(topic)
 }
 
-/// Broadcast a message to all processes subscribed to a topic.
-/// Each subscriber receives a `{libero_push, BitArray}` message
-/// containing the tagged push frame ready to send over WebSocket.
-pub fn broadcast(
+/// Send a message to all clients subscribed to a topic.
+/// Each subscriber's WebSocket process receives the tagged push
+/// frame and forwards it to the browser.
+pub fn send_to_client(
   topic topic: String,
   module module: String,
   msg msg: a,
