@@ -6,7 +6,7 @@ import libero/trace
 import libero/wire
 import server/app_error.{type AppError}
 import server/shared_state.{type SharedState}
-import server/handlers/todos as todos_handler
+import server/store as todos_handler
 
 @external(erlang, "server@generated@libero@rpc_atoms", "ensure")
 fn ensure_atoms() -> Nil

@@ -3,7 +3,14 @@
 
 import gleam/list
 import gleam/order
-import shared/todos.{type Todo, Todo}
+import libero/push
+import server/app_error.{type AppError}
+import server/shared_state.{type SharedState}
+import shared/todos.{
+  type MsgFromClient, type MsgFromServer, type Todo, AllLoaded, Create, Created,
+  Delete, Deleted, LoadAll, NotFound, TitleRequired, Todo, TodoFailed, Toggle,
+  Toggled,
+}
 
 /// Create the ETS table. Call once at server boot.
 pub fn init() -> Nil {
@@ -44,6 +51,56 @@ pub fn delete(id id: Int) -> Result(Nil, Nil) {
       delete_row(id)
       Ok(Nil)
     }
+  }
+}
+
+/// Handle an RPC message from the client.
+pub fn update_from_client(
+  msg msg: MsgFromClient,
+  state state: SharedState,
+) -> Result(#(MsgFromServer, SharedState), AppError) {
+  case msg {
+    Create(params:) -> {
+      case params.title {
+        "" -> Ok(#(TodoFailed(TitleRequired), state))
+        title -> {
+          let item = insert(title:)
+          push.send_to_clients(
+            topic: "todos",
+            module: "shared/todos",
+            msg: AllLoaded(all()),
+          )
+          Ok(#(Created(item), state))
+        }
+      }
+    }
+    Toggle(id:) -> {
+      case toggle(id:) {
+        Ok(toggled) -> {
+          push.send_to_clients(
+            topic: "todos",
+            module: "shared/todos",
+            msg: AllLoaded(all()),
+          )
+          Ok(#(Toggled(toggled), state))
+        }
+        Error(Nil) -> Error(NotFound)
+      }
+    }
+    Delete(id:) -> {
+      case delete(id:) {
+        Ok(Nil) -> {
+          push.send_to_clients(
+            topic: "todos",
+            module: "shared/todos",
+            msg: AllLoaded(all()),
+          )
+          Ok(#(Deleted(id), state))
+        }
+        Error(Nil) -> Error(NotFound)
+      }
+    }
+    LoadAll -> Ok(#(AllLoaded(all()), state))
   }
 }
 
