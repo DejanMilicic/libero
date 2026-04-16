@@ -406,7 +406,7 @@ fn write_register_ffi(
     [
       "import { Ok, Error, CustomType, Empty, NonEmpty } from \""
         <> prefix
-        <> "gleam.mjs\";",
+        <> "gleam_stdlib/gleam.mjs\";",
       "import { DecodeError } from \""
         <> prefix
         <> "libero/libero/wire.mjs\";",
