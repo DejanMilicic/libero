@@ -27,13 +27,13 @@ All of that is purely because HTTP is language-agnostic. For a REST API that ser
 
 The obvious prior art was worth studying.
 
-**Meteor.** The 2010s "full-stack reactive" framework. Client-side code could call server methods directly via `Meteor.call('method-name', args, callback)`, and Meteor handled the wire. What we liked: the ergonomics of "just call the function". What we didn't take: Meteor was JavaScript on both sides, not a typed language, and the reactive data-sync story (live queries, publication model) was a separate layer we didn't want to inherit.
+**[Meteor](https://www.meteor.com).** The 2010s "full-stack reactive" framework. Client-side code could call server methods directly via `Meteor.call('method-name', args, callback)`, and Meteor handled the wire. What we liked: the ergonomics of "just call the function". What we didn't take: Meteor was JavaScript on both sides, not a typed language, and the reactive data-sync story (live queries, publication model) was a separate layer we didn't want to inherit.
 
-**Phoenix LiveView.** Elixir's answer: the server owns the view state and pushes HTML diffs over a WebSocket. What we liked: the WebSocket-as-transport decision, the single-connection lifecycle, the intuition that same-origin stateful sockets are simpler than stateless HTTP for same-app traffic. What we didn't take: LiveView keeps the view state on the server. We wanted the opposite, where the SPA owns its model and the server answers discrete RPCs.
+**[Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/).** Elixir's answer: the server owns the view state and pushes HTML diffs over a WebSocket. What we liked: the WebSocket-as-transport decision, the single-connection lifecycle, the intuition that same-origin stateful sockets are simpler than stateless HTTP for same-app traffic. What we didn't take: LiveView keeps the view state on the server. We wanted the opposite, where the SPA owns its model and the server answers discrete RPCs.
 
-**tRPC (TypeScript).** End-to-end typed RPC for TypeScript projects. What we liked: the "define once, call from anywhere" ergonomic, the idea that a code generator can bridge two sides of a language boundary without either side hand-writing schemas. What we didn't take: tRPC leans on TypeScript's structural typing and package-boundary imports; Gleam's nominal types and its package model wanted a different shape.
+**[tRPC](https://trpc.io) (TypeScript).** End-to-end typed RPC for TypeScript projects. What we liked: the "define once, call from anywhere" ergonomic, the idea that a code generator can bridge two sides of a language boundary without either side hand-writing schemas. What we didn't take: tRPC leans on TypeScript's structural typing and package-boundary imports; Gleam's nominal types and its package model wanted a different shape.
 
-**Omnimessage (Gleam).** The closest existing thing in the Gleam ecosystem. Omnimessage models client/server communication as a single bidirectional `Msg` channel: the same `Msg` type flows on both sides, with variants tagged as client-only, server-only, or shared. The shared variants drive state synchronization (the server is the source of truth, the client merges incoming updates). Omnimessage is published on hex as `omnimessage_lustre` plus `omnimessage_server`, and we evaluated it carefully. What we liked: the recognition that REST is overkill for a Gleam-to-Gleam stack, the validation that a Lustre `Msg`-shaped wire actually works, and the careful thinking about transport health as a first-class concern. What we didn't take: omnimessage asks you to hand-write an encoder/decoder for your `Msg` type, where Libero wanted that to be generated. Omnimessage's bidirectional shared-`Msg` model is great for chat apps and state-sync use cases, but our project's calls are mostly discrete request/response operations (save this record, fetch that list, run this calculation), so a strict RPC model with a typed `Result(T, RpcError(E))` envelope per call fit better than a stream of merge-able shared messages. Different sweet spots, both valid.
+**[Omnimessage](https://github.com/weedonandscott/omnimessage) (Gleam).** The closest existing thing in the Gleam ecosystem. Omnimessage models client/server communication as a single bidirectional `Msg` channel: the same `Msg` type flows on both sides, with variants tagged as client-only, server-only, or shared. The shared variants drive state synchronization (the server is the source of truth, the client merges incoming updates). Omnimessage is published on hex as `omnimessage_lustre` plus `omnimessage_server`, and we evaluated it carefully. What we liked: the recognition that REST is overkill for a Gleam-to-Gleam stack, the validation that a Lustre `Msg`-shaped wire actually works, and the careful thinking about transport health as a first-class concern. What we didn't take: omnimessage asks you to hand-write an encoder/decoder for your `Msg` type, where Libero wanted that to be generated. Omnimessage's bidirectional shared-`Msg` model is great for chat apps and state-sync use cases, but our project's calls are mostly discrete request/response operations (save this record, fetch that list, run this calculation), so a strict RPC model with a typed `Result(T, RpcError(E))` envelope per call fit better than a stream of merge-able shared messages. Different sweet spots, both valid.
 
 The doc sketched a few architectural dimensions.
 
@@ -45,11 +45,11 @@ The doc sketched a few architectural dimensions.
 
 A later update to the design doc added notes about the WCCG context protocol (mentioned by Hayleigh) and the ETF-vs-JSON wire format tradeoff. Most of those notes became moot once the prototype shipped and empirical answers replaced the theoretical ones.
 
-The observation that let the project start in code: nobody in the Gleam ecosystem had built this yet, and Lustre's Elm architecture (`Model` / `Msg` / `Effect`) composes cleanly with a request/response RPC model. An RPC call is just `Effect(msg)` where `msg` carries `Result(T, RpcError(E))`. No special Lustre machinery required.
+The observation that let the project start in code: nobody in the Gleam ecosystem had built this yet, and [Lustre's](https://hexdocs.pm/lustre/) Elm architecture (`Model` / `Msg` / `Effect`) composes cleanly with a request/response RPC model. An RPC call is just `Effect(msg)` where `msg` carries `Result(T, RpcError(E))`. No special Lustre machinery required.
 
 ### Phase 2: The proof of concept
 
-A throwaway test bed. Three Gleam packages (`server/`, `client/`, `shared/`) mirroring our project's layout, a Wisp+Mist HTTP/WS server, a Lustre SPA, a SQLite-backed records/notes CRUD app. Built to prove out the wire format and the codegen without committing to a library shape. The proof of concept lived its entire life as a local-only prototype. Never published, never deployed, never meant to be.
+A throwaway test bed. Three Gleam packages (`server/`, `client/`, `shared/`) mirroring our project's layout, a [Wisp](https://hexdocs.pm/wisp/)+[Mist](https://hexdocs.pm/mist/) HTTP/WS server, a Lustre SPA, a SQLite-backed records/notes CRUD app. Built to prove out the wire format and the codegen without committing to a library shape. The proof of concept lived its entire life as a local-only prototype. Never published, never deployed, never meant to be.
 
 ### Phase 3: The wire format detour
 
@@ -76,7 +76,7 @@ A TOML config listing RPC names by string was rejected. Config-over-code loses t
 
 A Gleam attribute or macro doesn't exist in the language.
 
-A doc comment marker (`/// @rpc`) worked. Gleam's parser discards doc comments from the AST, but a simple text preprocessing step can extract them before handing the source to `glance`. Grep-able, in-source, minimal.
+A doc comment marker (`/// @rpc`) worked. Gleam's parser discards doc comments from the AST, but a simple text preprocessing step can extract them before handing the source to [`glance`](https://hexdocs.pm/glance/). Grep-able, in-source, minimal.
 
 Went with the doc comment marker. The generator (`libero/src/libero.gleam`) walks `src/server/**`, finds every `pub fn` preceded by `/// @rpc`, and emits both the dispatch case and the client stub. Types flow through automatically because the generator runs the same `glance` parser the Gleam compiler uses.
 
@@ -137,7 +137,7 @@ Libero lived inside the proof of concept for a while as `lib/libero/`. Once the 
 
 v3 replaced the `@rpc` annotation-driven model with a convention-based message type approach. Instead of annotating individual functions, you define `MsgFromClient` and `MsgFromServer` types in a shared module and Libero generates the dispatch and stubs from those.
 
-The naming drew from elm-webapp and Lamdera. Every function name tells you who's sending and who's receiving:
+The naming drew from [elm-webapp](https://github.com/choonkeat/elm-webapp) and [Lamdera](https://lamdera.com). Every function name tells you who's sending and who's receiving:
 
 - `send_to_server(msg:)`, client sends to server
 - `update_from_client(msg:)`, server handles client message
