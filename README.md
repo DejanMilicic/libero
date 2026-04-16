@@ -1,6 +1,6 @@
 # Libero
 
-Libero generates typed messaging between clients and a Gleam server. You define message types in a shared module, and Libero produces a server dispatch function and client stubs from them. Browser clients (like Lustre) connect over WebSocket, BEAM clients (Gleam, Erlang, Elixir) connect over HTTP. No REST routes, no JSON codecs, no hand-written dispatch tables.
+Libero generates typed messaging between clients and a [Gleam](https://gleam.run) server. You define message types in a shared module, and Libero produces a server dispatch function and client stubs from them. Browser clients (like [Lustre](https://hexdocs.pm/lustre/)) connect over WebSocket, [BEAM](https://www.erlang.org/blog/a-brief-beam-primer/) clients ([Gleam](https://gleam.run), [Erlang](https://www.erlang.org), [Elixir](https://elixir-lang.org)) connect over HTTP. No REST routes, no JSON codecs, no hand-written dispatch tables.
 
 ## Convention
 
@@ -25,11 +25,11 @@ pub type MsgFromServer {
 }
 ```
 
-`MsgFromClient` contains messages from the client to the server. `MsgFromServer` contains messages the server sends back, both as responses and as server-initiated pushes. A module can define one or both.
+[`MsgFromClient`](https://github.com/pairshaped/libero/blob/master/examples/todos/shared/src/shared/todos.gleam) contains messages from the client to the server. `MsgFromServer` contains messages the server sends back, both as responses and as server-initiated pushes. A module can define one or both.
 
 ## Example usage
 
-The client sends a message using the generated stub:
+The client sends a message using the [generated stub](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/todos.gleam):
 
 ```gleam
 // In your Lustre update:
@@ -39,7 +39,7 @@ ToggleTodo(id) ->
   #(model, todos_rpc.send_to_server(msg: Toggle(id:), on_response: GotResponse))
 ```
 
-The server handles it in the handler module:
+The server handles it in the [handler module](https://github.com/pairshaped/libero/blob/master/examples/todos/server/src/server/handlers/todos.gleam):
 
 ```gleam
 // server/src/server/handlers/todos.gleam
@@ -63,7 +63,7 @@ pub fn update_from_client(
 
 ## Server push
 
-The server can push messages to connected clients without a prior request. Uses BEAM pg groups for topic-based subscriptions, no external dependencies.
+The server can push messages to connected clients without a prior request. Uses BEAM [pg](https://www.erlang.org/doc/apps/kernel/pg.html) groups for topic-based subscriptions, no external dependencies.
 
 ```gleam
 // Server — on WebSocket connect, join a topic
@@ -88,7 +88,7 @@ Push is opt-in. If you never call `update_from_server`, push frames are silently
 
 The generated `dispatch.handle(state:, data:)` function takes a `BitArray` and returns a `BitArray`. It doesn't know or care about the transport. This means any BEAM process can be a Libero client by sending ETF-encoded messages over HTTP POST. No WebSocket and no Libero dependency needed.
 
-This works because ETF is the BEAM's native serialization format. Any BEAM client (Gleam, Erlang, Elixir) can call `term_to_binary` on the same shared types the browser uses, POST the bytes, and decode the response with `binary_to_term`. The server runs the same dispatch logic either way.
+This works because [ETF](https://www.erlang.org/doc/apps/erts/erl_ext_dist.html) is the BEAM's native serialization format. Any BEAM client (Gleam, Erlang, Elixir) can call `term_to_binary` on the same shared types the browser uses, POST the bytes, and decode the response with `binary_to_term`. The server runs the same dispatch logic either way.
 
 ```gleam
 // Server: add an HTTP route that calls the same dispatch
@@ -106,7 +106,7 @@ let assert Ok(response) = httpc.request(Post, url, payload)
 let result = binary_to_term(response.body)
 ```
 
-See [`examples/todos/cli/`](./examples/todos/cli/) for a runnable CLI example with argument parsing.
+See [`examples/todos/cli/`](https://github.com/pairshaped/libero/blob/master/examples/todos/cli/) for a runnable CLI example with argument parsing.
 
 ## Codegen CLI
 
@@ -145,14 +145,14 @@ gleam run -m libero -- \
 
 From a shared module at `shared/src/shared/todos.gleam`, Libero writes:
 
-- `server/src/server/generated/libero/dispatch.gleam`: routes incoming wire calls to handler modules.
-- `client/src/client/generated/libero/todos.gleam`: typed `send_to_server` and `update_from_server` stubs for the client.
-- `client/src/client/generated/libero/rpc_config.gleam`: WebSocket URL configuration.
-- `client/src/client/generated/libero/rpc_register.gleam` + `rpc_register_ffi.mjs`: auto-registers every custom type that may appear on the wire (called automatically on first send).
+- [`dispatch.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/server/src/server/generated/libero/dispatch.gleam): routes incoming wire calls to handler modules.
+- [`todos.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/todos.gleam): typed `send_to_server` and `update_from_server` stubs for the client.
+- [`rpc_config.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_config.gleam): WebSocket URL configuration.
+- [`rpc_register.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_register.gleam) + [`rpc_register_ffi.mjs`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_register_ffi.mjs): auto-registers every custom type that may appear on the wire (called automatically on first send).
 
 ## How it works
 
-The wire format is Erlang External Term Format (ETF) over binary WebSocket frames. Gleam's custom types, lists, options, and primitives all serialize automatically without explicit codecs.
+The wire format is [Erlang External Term Format (ETF)](https://www.erlang.org/doc/apps/erts/erl_ext_dist.html) over binary WebSocket frames. Gleam's custom types, lists, options, and primitives all serialize automatically without explicit codecs.
 
 The client sends a `{module_path, MsgFromClient_value}` tuple. The server dispatch decodes it, routes by module path, and calls the handler. Codec registration happens automatically on the first `send_to_server` call.
 
