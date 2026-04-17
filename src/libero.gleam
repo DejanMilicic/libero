@@ -134,6 +134,16 @@ fn run(
     discovered: discovered,
   ))
 
+  // Generate typed decoder Gleam wrapper + FFI.
+  use _ <- result.try(
+    codegen.write_decoders_gleam(config:)
+    |> result.map_error(fn(e) { [e] }),
+  )
+  use _ <- result.try(
+    codegen.write_decoders_ffi(config:, discovered: discovered)
+    |> result.map_error(fn(e) { [e] }),
+  )
+
   // Generate Erlang atom pre-registration module.
   use _ <- result.try(
     codegen.write_atoms(config: config, discovered: discovered)
