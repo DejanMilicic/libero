@@ -9,6 +9,7 @@ import gleam/list
 import gleam/option
 import gleam/result
 import libero/cli
+import libero/cli/new as cli_new
 import libero/codegen
 import libero/config
 import libero/gen_error
@@ -19,7 +20,10 @@ pub fn main() -> Nil {
   let Nil = trap_signals()
   case cli.parse_command() {
     cli.New(name:) -> {
-      io.println("libero new " <> name <> " (not yet implemented)")
+      case cli_new.scaffold(name:, path: name) {
+        Ok(Nil) -> io.println("Created " <> name <> ". Happy hacking!")
+        Error(reason) -> io.println_error("error: " <> reason)
+      }
       Nil
     }
     cli.Add(name:, target:) -> {

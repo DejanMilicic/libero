@@ -1,0 +1,31 @@
+//// `libero new` — scaffold a new Libero project at the given path.
+
+import libero/cli/templates
+import simplifile
+
+/// Scaffold a new project named `name` under `path`.
+///
+/// Creates the directory tree and writes starter source files so the
+/// project compiles and runs out of the box.
+pub fn scaffold(name name: String, path path: String) -> Result(Nil, String) {
+  let core_dir = path <> "/src/core"
+
+  use _ <- map_err(simplifile.create_directory_all(core_dir))
+  use _ <- map_err(simplifile.write(path <> "/libero.toml", templates.libero_toml(name:)))
+  use _ <- map_err(simplifile.write(path <> "/gleam.toml", templates.gleam_toml(name:)))
+  use _ <- map_err(simplifile.write(core_dir <> "/todos.gleam", templates.starter_messages()))
+  use _ <- map_err(simplifile.write(core_dir <> "/todos_handler.gleam", templates.starter_handler()))
+  use _ <- map_err(simplifile.write(core_dir <> "/shared_state.gleam", templates.starter_shared_state()))
+  use _ <- map_err(simplifile.write(core_dir <> "/app_error.gleam", templates.starter_app_error()))
+  Ok(Nil)
+}
+
+fn map_err(
+  result: Result(a, simplifile.FileError),
+  next: fn(a) -> Result(Nil, String),
+) -> Result(Nil, String) {
+  case result {
+    Ok(value) -> next(value)
+    Error(err) -> Error(simplifile.describe_error(err))
+  }
+}
