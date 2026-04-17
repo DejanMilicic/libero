@@ -5,7 +5,8 @@
 
 /// Returns gleam.toml content for a new project.
 /// Libero config lives under the [libero] section.
-pub fn gleam_toml(name name: String) -> String {
+/// `libero_path` is the relative path to the libero package.
+pub fn gleam_toml(name name: String, libero_path libero_path: String) -> String {
   "name = \""
   <> name
   <> "\"
@@ -14,8 +15,12 @@ target = \"erlang\"
 
 [dependencies]
 gleam_stdlib = \">= 0.69.0 and < 1.0.0\"
+gleam_erlang = \"~> 1.0\"
+mist = \"~> 6.0\"
 lustre = \"~> 5.6\"
-libero = { path = \"../libero\" }
+libero = { path = \""
+  <> libero_path
+  <> "\" }
 
 [dev-dependencies]
 gleeunit = \"~> 1.0\"
@@ -125,10 +130,12 @@ fn view() -> element.Element(msg) {
 }
 
 /// Returns a gleam.toml for a client package.
+/// `libero_path` is the relative path from the client dir to the libero package.
 pub fn client_gleam_toml(
   name name: String,
   target target: String,
   root_package root_package: String,
+  libero_path libero_path: String,
 ) -> String {
   "name = \""
   <> name
@@ -143,7 +150,9 @@ gleam_stdlib = \">= 0.69.0 and < 1.0.0\"
 "
   <> root_package
   <> " = { path = \"../../\" }
-libero = { path = \"../../../libero\" }
+libero = { path = \""
+  <> libero_path
+  <> "\" }
 "
   <> case target {
     "javascript" -> "lustre = \"~> 5.6\"\n"

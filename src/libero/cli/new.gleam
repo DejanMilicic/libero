@@ -21,7 +21,9 @@ pub fn scaffold(name _name: String, path path: String) -> Result(Nil, String) {
   let core_dir = path <> "/src/core"
 
   use _ <- map_err(simplifile.create_directory_all(core_dir))
-  use _ <- map_err(simplifile.write(path <> "/gleam.toml", templates.gleam_toml(name:)))
+  // TODO: detect libero path from current project or use hex version once published
+  let libero_path = "../libero"
+  use _ <- map_err(simplifile.write(path <> "/gleam.toml", templates.gleam_toml(name:, libero_path:)))
   use _ <- map_err(simplifile.write(core_dir <> "/messages.gleam", templates.starter_messages()))
   use _ <- map_err(simplifile.write(core_dir <> "/handler.gleam", templates.starter_handler()))
   use _ <- map_err(simplifile.write(core_dir <> "/shared_state.gleam", templates.starter_shared_state()))

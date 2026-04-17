@@ -27,7 +27,13 @@ pub fn add_client(
   use root_name <- try_read_root_name(path)
   use _ <- write_if_missing(
     client_toml_path,
-    templates.client_gleam_toml(name:, target:, root_package: root_name),
+    // TODO: detect libero path or use hex version once published
+    templates.client_gleam_toml(
+      name:,
+      target:,
+      root_package: root_name,
+      libero_path: "../../../libero",
+    ),
   )
 
   // Generate starter app if src is empty

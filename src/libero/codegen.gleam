@@ -320,7 +320,7 @@ pub fn write_websocket(
 //// WebSocket handler for mist. Handles dispatch, push frame
 //// forwarding, and topic cleanup on disconnect.
 
-import gleam/decode
+import gleam/dynamic/decode
 import gleam/erlang/atom
 import gleam/erlang/process
 import gleam/http/request.{type Request}
