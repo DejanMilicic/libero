@@ -35,6 +35,8 @@ pub fn validate_todos_example_passes_test() {
     scanner.validate_conventions(
       message_modules: modules,
       server_src: "examples/todos/server/src",
+      shared_state_path: "examples/todos/server/src/server/shared_state.gleam",
+      app_error_path: "examples/todos/server/src/server/app_error.gleam",
     )
   // Handler should be discovered
   let assert [m] = updated_modules
@@ -56,7 +58,12 @@ pub fn scaffold_shared_state_when_missing_test() {
   ]
   // Validation will scaffold missing files, but still error on missing handler
   let assert Error(_errors) =
-    scanner.validate_conventions(message_modules: modules, server_src: dir)
+    scanner.validate_conventions(
+      message_modules: modules,
+      server_src: dir,
+      shared_state_path: server_dir <> "/shared_state.gleam",
+      app_error_path: server_dir <> "/app_error.gleam",
+    )
   // shared_state.gleam should have been scaffolded
   let assert Ok(content) = simplifile.read(server_dir <> "/shared_state.gleam")
   let assert True = string.contains(content, "pub type SharedState")
@@ -80,7 +87,12 @@ pub fn scaffold_app_error_when_missing_test() {
     ),
   ]
   let assert Error(_errors) =
-    scanner.validate_conventions(message_modules: modules, server_src: dir)
+    scanner.validate_conventions(
+      message_modules: modules,
+      server_src: dir,
+      shared_state_path: server_dir <> "/shared_state.gleam",
+      app_error_path: server_dir <> "/app_error.gleam",
+    )
   // app_error.gleam should have been scaffolded
   let assert Ok(content) = simplifile.read(server_dir <> "/app_error.gleam")
   let assert True = string.contains(content, "pub type AppError")
@@ -103,6 +115,8 @@ pub fn validate_missing_handler_test() {
     scanner.validate_conventions(
       message_modules: modules,
       server_src: "/tmp/nonexistent_server_src",
+      shared_state_path: "/tmp/nonexistent_server_src/server/shared_state.gleam",
+      app_error_path: "/tmp/nonexistent_server_src/server/app_error.gleam",
     )
   let assert True =
     list.any(errors, fn(e) {
