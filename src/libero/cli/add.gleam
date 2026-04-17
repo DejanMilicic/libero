@@ -7,8 +7,8 @@ import simplifile
 /// Add a client named `name` with the given `target` to the project at `path`.
 ///
 /// Creates `<path>/src/clients/<name>/` and writes a starter app file only
-/// when the directory contains no files yet. Appends the `[clients.<name>]`
-/// section to `<path>/libero.toml` only when that section is absent.
+/// when the directory contains no files yet. Appends the `[libero.clients.<name>]`
+/// section to `<path>/gleam.toml` only when that section is absent.
 pub fn add_client(
   project_path path: String,
   name name: String,
@@ -31,15 +31,15 @@ pub fn add_client(
     _ -> Ok(Nil)
   })
 
-  use toml_content <- map_err(simplifile.read(path <> "/libero.toml"))
+  use toml_content <- map_err(simplifile.read(path <> "/gleam.toml"))
 
-  let section_header = "[clients." <> name <> "]"
+  let section_header = "[libero.clients." <> name <> "]"
   case string.contains(toml_content, section_header) {
     True -> Ok(Nil)
     False -> {
       let addition =
-        "\n[clients." <> name <> "]\ntarget = \"" <> target <> "\"\n"
-      map_err(simplifile.append(path <> "/libero.toml", addition), fn(_) {
+        "\n[libero.clients." <> name <> "]\ntarget = \"" <> target <> "\"\n"
+      map_err(simplifile.append(path <> "/gleam.toml", addition), fn(_) {
         Ok(Nil)
       })
     }

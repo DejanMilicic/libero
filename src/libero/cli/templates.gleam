@@ -1,18 +1,10 @@
 //// Template strings for `libero new` scaffolding.
 ////
 //// Each function returns a file's content as a String. The generated
-//// files give a new project a runnable todos example out of the box.
-
-/// Returns libero.toml content for a new project.
-pub fn libero_toml(name name: String) -> String {
-  "name = \""
-  <> name
-  <> "\"
-port = 8080
-"
-}
+//// files give a new project a minimal skeleton to build from.
 
 /// Returns gleam.toml content for a new project.
+/// Libero config lives under the [libero] section.
 pub fn gleam_toml(name name: String) -> String {
   "name = \""
   <> name
@@ -27,90 +19,52 @@ libero = { path = \"../libero\" }
 
 [dev-dependencies]
 gleeunit = \"~> 1.0\"
+
+[libero]
+port = 8080
 "
 }
 
-/// Returns a starter todos messages module.
+/// Returns a skeleton messages module.
 ///
-/// Defines the core domain types and the typed RPC boundary between
-/// client and server that libero uses to generate dispatch/send code.
+/// Defines the typed RPC boundary between client and server.
+/// Add your message types here — libero scans for MsgFromClient
+/// and MsgFromServer to generate dispatch and client stubs.
 pub fn starter_messages() -> String {
-  "pub type Todo {
-  Todo(id: Int, title: String, completed: Bool)
-}
-
-pub type TodoParams {
-  TodoParams(title: String)
-}
-
-pub type TodoError {
-  NotFound
-  TitleRequired
-}
+  "/// Define your message types here.
+/// Libero scans for MsgFromClient and MsgFromServer to generate
+/// dispatch and client stubs.
 
 pub type MsgFromClient {
-  Create(params: TodoParams)
-  Toggle(id: Int)
-  Delete(id: Int)
-  LoadAll
+  Ping
 }
 
 pub type MsgFromServer {
-  TodoCreated(Result(Todo, TodoError))
-  TodoToggled(Result(Todo, TodoError))
-  TodoDeleted(Result(Int, TodoError))
-  TodosLoaded(Result(List(Todo), TodoError))
+  Pong(String)
 }
 "
 }
 
-/// Returns a starter handler module.
-///
-/// Implements `update_from_client` — the single entry point that libero's
-/// generated dispatch table calls for every inbound RPC from the client.
+/// Returns a skeleton handler module.
 pub fn starter_handler() -> String {
   "import core/app_error.{type AppError}
+import core/messages.{type MsgFromClient, type MsgFromServer, Ping, Pong}
 import core/shared_state.{type SharedState}
-import core/todos.{
-  type MsgFromClient, type MsgFromServer, Create, Delete, LoadAll, NotFound,
-  TitleRequired, Todo, TodoCreated, TodoDeleted, TodoToggled, TodosLoaded,
-  Toggle,
-}
 
-/// Handle an RPC message from the client.
-///
-/// Domain errors (NotFound, TitleRequired) are wrapped in the response
-/// variant's Result so the client surfaces them through RemoteData
-/// just like successes. Reserve AppError for framework-level failures.
 pub fn update_from_client(
   msg msg: MsgFromClient,
   state state: SharedState,
 ) -> Result(#(MsgFromServer, SharedState), AppError) {
   case msg {
-    Create(params:) -> {
-      case params.title {
-        \"\" -> Ok(#(TodoCreated(Error(TitleRequired)), state))
-        _title -> Ok(#(TodoCreated(Error(NotFound)), state))
-      }
-    }
-    Toggle(id: _id) -> Ok(#(TodoToggled(Error(NotFound)), state))
-    Delete(id: _id) -> Ok(#(TodoDeleted(Error(NotFound)), state))
-    LoadAll -> Ok(#(TodosLoaded(Ok([])), state))
+    Ping -> Ok(#(Pong(\"pong\"), state))
   }
 }
 "
 }
 
-/// Returns a starter SharedState module.
-///
-/// SharedState is a unit type — actual state lives in ETS or a process.
-/// This satisfies the dispatch.handle(state:, data:) signature that
-/// libero generates.
+/// Returns a skeleton SharedState module.
 pub fn starter_shared_state() -> String {
-  "/// SharedState is a unit type — actual state lives in ETS or a process.
-/// This satisfies the dispatch.handle(state:, data:) signature
-/// that libero generates.
-pub type SharedState {
+  "pub type SharedState {
   SharedState
 }
 
@@ -120,47 +74,47 @@ pub fn new() -> SharedState {
 "
 }
 
-/// Returns a starter AppError module.
-///
-/// Framework-level errors only. Domain errors live inside each
-/// MsgFromServer variant's Result.
+/// Returns a skeleton AppError module.
 pub fn starter_app_error() -> String {
-  "/// Framework-level errors only. Domain errors live inside each
-/// MsgFromServer variant's Result. Libero treats AppError values as
-/// opaque — a panic, an unknown RPC, or a handler returning
-/// Error(app_err) all surface to the client through RpcError rather
-/// than through a typed MsgFromServer payload.
-pub type AppError {
+  "pub type AppError {
   AppError(reason: String)
+}
+"
+}
+
+/// Returns a skeleton test that verifies the handler works.
+pub fn starter_test() -> String {
+  "import core/messages.{Ping, Pong}
+import core/handler
+import core/shared_state
+
+pub fn ping_test() {
+  let state = shared_state.new()
+  let assert Ok(#(Pong(\"pong\"), _)) =
+    handler.update_from_client(msg: Ping, state:)
 }
 "
 }
 
 /// Returns a starter Lustre SPA app module.
 pub fn starter_spa(name name: String) -> String {
-  "import gleam/io
-import lustre
+  "import lustre
+import lustre/element
+import lustre/element/html
 
-pub fn main() -> Nil {
-  io.println(\"Starting "
-  <> name
-  <> " SPA...\")
-  let app = lustre.application(init, update, view)
+pub fn main() {
+  let app = lustre.element(view())
   let assert Ok(_) = lustre.start(app, \"#app\", Nil)
   Nil
 }
 
-fn init(_flags) {
-  #(Nil, [])
-}
-
-fn update(model, _msg) {
-  #(model, [])
-}
-
-fn view(_model) {
-  import lustre/element/html
-  html.div([], [])
+fn view() -> element.Element(msg) {
+  html.div([], [
+    html.h1([], [html.text(\""
+  <> name
+  <> "\")]),
+    html.p([], [html.text(\"Edit this file to get started.\")]),
+  ])
 }
 "
 }

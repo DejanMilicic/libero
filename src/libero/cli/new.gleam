@@ -21,12 +21,14 @@ pub fn scaffold(name _name: String, path path: String) -> Result(Nil, String) {
   let core_dir = path <> "/src/core"
 
   use _ <- map_err(simplifile.create_directory_all(core_dir))
-  use _ <- map_err(simplifile.write(path <> "/libero.toml", templates.libero_toml(name:)))
   use _ <- map_err(simplifile.write(path <> "/gleam.toml", templates.gleam_toml(name:)))
-  use _ <- map_err(simplifile.write(core_dir <> "/todos.gleam", templates.starter_messages()))
-  use _ <- map_err(simplifile.write(core_dir <> "/todos_handler.gleam", templates.starter_handler()))
+  use _ <- map_err(simplifile.write(core_dir <> "/messages.gleam", templates.starter_messages()))
+  use _ <- map_err(simplifile.write(core_dir <> "/handler.gleam", templates.starter_handler()))
   use _ <- map_err(simplifile.write(core_dir <> "/shared_state.gleam", templates.starter_shared_state()))
   use _ <- map_err(simplifile.write(core_dir <> "/app_error.gleam", templates.starter_app_error()))
+  let test_dir = path <> "/test"
+  use _ <- map_err(simplifile.create_directory_all(test_dir))
+  use _ <- map_err(simplifile.write(test_dir <> "/" <> name <> "_test.gleam", templates.starter_test()))
   Ok(Nil)
 }
 

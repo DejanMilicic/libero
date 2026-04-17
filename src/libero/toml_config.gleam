@@ -1,6 +1,6 @@
 //// TOML configuration parser for Libero v4.
 ////
-//// Parses a `libero.toml` string into a `TomlConfig` record.
+//// Reads the `[libero]` section from gleam.toml.
 
 import gleam/dict
 import gleam/list
@@ -36,10 +36,10 @@ pub fn parse(input: String) -> Result(TomlConfig, String) {
   )
 
   let port =
-    tom.get_int(parsed, ["port"]) |> result.unwrap(8080)
+    tom.get_int(parsed, ["libero", "port"]) |> result.unwrap(8080)
 
   let rest =
-    tom.get_bool(parsed, ["server", "rest"]) |> result.unwrap(False)
+    tom.get_bool(parsed, ["libero", "server", "rest"]) |> result.unwrap(False)
 
   use clients <- result.try(parse_clients(parsed))
 
@@ -89,7 +89,7 @@ pub fn to_codegen_config(
 fn parse_clients(
   parsed: dict.Dict(String, tom.Toml),
 ) -> Result(List(ClientConfig), String) {
-  case tom.get_table(parsed, ["clients"]) {
+  case tom.get_table(parsed, ["libero", "clients"]) {
     Error(_) -> Ok([])
     Ok(clients_dict) -> {
       let names = dict.keys(clients_dict)

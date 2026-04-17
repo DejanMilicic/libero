@@ -1,5 +1,0 @@
-name = "todos_v4"
-port = 8080
-
-[clients.web]
-target = "javascript"

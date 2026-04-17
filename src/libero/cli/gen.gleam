@@ -1,6 +1,6 @@
 //// `libero gen` — TOML-driven codegen command.
 ////
-//// Reads `libero.toml` from the project path, scans `src/core/` for message
+//// Reads `gleam.toml` from the project path, scans `src/core/` for message
 //// modules, validates conventions, and runs the full codegen pipeline for
 //// each declared client.
 
@@ -17,14 +17,14 @@ import simplifile
 
 /// Run the `gen` command from the given project path (usually `"."`).
 ///
-/// Reads `libero.toml`, discovers message modules under `src/core/`, validates
+/// Reads `gleam.toml`, discovers message modules under `src/core/`, validates
 /// conventions, and runs codegen for each declared client.
 pub fn run(project_path project_path: String) -> Result(Nil, String) {
-  // 1. Read libero.toml
+  // 1. Read gleam.toml
   use toml_content <- result.try(
-    simplifile.read(project_path <> "/libero.toml")
+    simplifile.read(project_path <> "/gleam.toml")
     |> result.map_error(fn(err) {
-      "cannot read libero.toml: " <> simplifile.describe_error(err)
+      "cannot read gleam.toml: " <> simplifile.describe_error(err)
     }),
   )
 
@@ -34,7 +34,7 @@ pub fn run(project_path project_path: String) -> Result(Nil, String) {
   // 3. If no clients declared, print and exit
   case toml_cfg.clients {
     [] -> {
-      io.println("libero: no clients declared in libero.toml")
+      io.println("libero: no clients declared in gleam.toml")
       Ok(Nil)
     }
     clients -> run_with_clients(project_path:, toml_cfg:, clients:)

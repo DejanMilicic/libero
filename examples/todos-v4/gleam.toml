@@ -8,3 +8,9 @@ libero = { path = "../../" }
 mist = "~> 6.0"
 wisp = "~> 2.2"
 gleam_erlang = "~> 1.0"
+
+[libero]
+port = 8080
+
+[libero.clients.web]
+target = "javascript"
