@@ -57,9 +57,14 @@ fn handle_ssr(
   let call = wire.encode_call(module: "shared/todos", msg: LoadAll)
   let #(response_bytes, _, _) = dispatch.handle(state: shared, data: call)
 
-  // Wire response has a 1-byte tag prefix, then Result(payload, RpcError) in ETF.
+  // Wire response: 1-byte tag prefix, then ETF payload.
+  // After stripping the tag, decode the payload. Dispatch returns
+  // Result(Result(List(Todo), TodoError), RpcError) since it strips
+  // the MsgFromServer variant and exposes the inner Result field.
+  // Wire response: 1-byte tag, then Result(inner, RpcError) in ETF.
+  // inner is the MsgFromServer variant's unwrapped field: Ok(List(Todo))
   let assert <<_tag, etf_payload:bytes>> = response_bytes
-  let assert Ok(items) = wire.decode_safe(etf_payload)
+  let assert Ok(Ok(items)) = wire.decode(etf_payload)
 
   // Build model and render view
   let model = Model(items: Success(items), input: "", last_action: NotAsked)
