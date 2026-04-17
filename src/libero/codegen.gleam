@@ -675,6 +675,12 @@ pub fn write_decoders_ffi(
 ) -> Result(Nil, GenError) {
   let imports = emit_decoder_imports(discovered, config)
   let body = emit_typed_decoders(discovered)
+  // Inject stdlib constructor setters at module load time so that
+  // decode_result_of / decode_option_of / decode_list_of work correctly.
+  let ctor_setters =
+    "setResultCtors(Ok, ResultError);\n"
+    <> "setOptionCtors(Some, None);\n"
+    <> "setListCtors(Empty, NonEmpty);\n"
   // Append auto-registration when decode_msg_from_server was emitted.
   // This wires the typed decoder into the push frame path in rpc_ffi.mjs
   // at module load time, without requiring any consumer code changes.
@@ -697,6 +703,8 @@ pub fn write_decoders_ffi(
 "
     <> imports
     <> "\n\n"
+    <> ctor_setters
+    <> "\n"
     <> body
     <> "\n"
     <> auto_register
@@ -726,9 +734,18 @@ fn emit_decoder_imports(
   let prelude_import =
     "import { decode_int, decode_float, decode_string, decode_bool, "
     <> "decode_bit_array, decode_list_of, decode_option_of, decode_result_of, "
-    <> "decode_dict_of, decode_tuple_of, DecodeError, setMsgFromServerDecoder } from \""
+    <> "decode_dict_of, decode_tuple_of, DecodeError, setMsgFromServerDecoder, "
+    <> "setResultCtors, setOptionCtors, setListCtors } from \""
     <> config.decoders_prelude_import_path
     <> "\";"
+  let prefix = config.register_relpath_prefix
+  let stdlib_imports =
+    "import { Ok, Error as ResultError, Empty, NonEmpty } from \""
+    <> prefix
+    <> "gleam_stdlib/gleam.mjs\";\n"
+    <> "import { Some, None } from \""
+    <> prefix
+    <> "gleam_stdlib/gleam/option.mjs\";"
   let module_imports =
     list.map(module_paths, fn(mp) {
       "import * as _m_"
@@ -738,7 +755,7 @@ fn emit_decoder_imports(
       <> module_to_mjs_path(mp)
       <> "\";"
     })
-  string.join([prelude_import, ..module_imports], "\n")
+  string.join([prelude_import, stdlib_imports, ..module_imports], "\n")
 }
 
 /// Convert a module path to a flat JS identifier for use as a namespace alias.
