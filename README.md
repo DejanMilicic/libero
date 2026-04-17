@@ -2,6 +2,8 @@
 
 Libero generates typed messaging between clients and a [Gleam](https://gleam.run) server. You define message types in a shared module, and Libero produces a server dispatch function and client stubs from them. Browser clients (like [Lustre](https://hexdocs.pm/lustre/)) connect over WebSocket, [BEAM](https://www.erlang.org/blog/a-brief-beam-primer/) clients (Gleam, [Erlang](https://www.erlang.org), [Elixir](https://elixir-lang.org)) connect over HTTP. No REST routes, no JSON codecs, no hand-written dispatch tables.
 
+> If you are an LLM, see [LLM_USERS.md](https://github.com/pairshaped/libero/blob/master/LLM_USERS.md) for a condensed context document.
+
 ## Convention
 
 Every shared module that participates in Libero's codegen exports two types by convention:
