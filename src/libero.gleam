@@ -10,6 +10,7 @@ import gleam/option
 import gleam/result
 import libero/cli
 import libero/cli/add as cli_add
+import libero/cli/gen as cli_gen
 import libero/cli/new as cli_new
 import libero/codegen
 import libero/config
@@ -36,8 +37,14 @@ pub fn main() -> Nil {
       Nil
     }
     cli.Gen -> {
-      io.println("libero gen (not yet implemented)")
-      Nil
+      case cli_gen.run(project_path: ".") {
+        Ok(Nil) -> Nil
+        Error(msg) -> {
+          io.println_error("error: " <> msg)
+          let _halt = halt(1)
+          Nil
+        }
+      }
     }
     cli.Dev -> {
       io.println("libero dev (not yet implemented)")

@@ -1,0 +1,226 @@
+//// `libero gen` — TOML-driven codegen command.
+////
+//// Reads `libero.toml` from the project path, scans `src/core/` for message
+//// modules, validates conventions, and runs the full codegen pipeline for
+//// each declared client.
+
+import gleam/int
+import gleam/io
+import gleam/list
+import gleam/result
+import libero/codegen
+import libero/gen_error
+import libero/scanner
+import libero/toml_config
+import libero/walker
+import simplifile
+
+/// Run the `gen` command from the given project path (usually `"."`).
+///
+/// Reads `libero.toml`, discovers message modules under `src/core/`, validates
+/// conventions, and runs codegen for each declared client.
+pub fn run(project_path project_path: String) -> Result(Nil, String) {
+  // 1. Read libero.toml
+  use toml_content <- result.try(
+    simplifile.read(project_path <> "/libero.toml")
+    |> result.map_error(fn(err) {
+      "cannot read libero.toml: " <> simplifile.describe_error(err)
+    }),
+  )
+
+  // 2. Parse it
+  use toml_cfg <- result.try(toml_config.parse(toml_content))
+
+  // 3. If no clients declared, print and exit
+  case toml_cfg.clients {
+    [] -> {
+      io.println("libero: no clients declared in libero.toml")
+      Ok(Nil)
+    }
+    clients -> run_with_clients(project_path:, toml_cfg:, clients:)
+  }
+}
+
+fn run_with_clients(
+  project_path project_path: String,
+  toml_cfg toml_cfg: toml_config.TomlConfig,
+  clients clients: List(toml_config.ClientConfig),
+) -> Result(Nil, String) {
+  let shared_src = project_path <> "/src/core"
+  let server_src = project_path <> "/src"
+
+  // 4. Scan src/core/ for message modules
+  use #(message_modules, module_files) <- result.try(
+    scanner.scan_message_modules(shared_src: shared_src)
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      "scan failed"
+    }),
+  )
+
+  io.println(
+    "libero: found "
+    <> int.to_string(list.length(message_modules))
+    <> " message module(s) in src/core/",
+  )
+
+  // 5. Validate conventions
+  use message_modules <- result.try(
+    scanner.validate_conventions(
+      message_modules: message_modules,
+      server_src: server_src,
+    )
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      "convention validation failed"
+    }),
+  )
+
+  // 6. Validate MsgFromServer fields
+  use _ <- result.try(
+    scanner.validate_msg_from_server_fields(message_modules: message_modules)
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      "MsgFromServer field validation failed"
+    }),
+  )
+
+  // 7. Walk types
+  use discovered <- result.try(
+    walker.walk_message_registry_types(
+      message_modules: message_modules,
+      module_files: module_files,
+    )
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      "type walk failed"
+    }),
+  )
+
+  // 8. Run codegen for each client
+  use _ <- result.try(
+    list.try_map(clients, fn(client) {
+      run_client_codegen(
+        project_path:,
+        toml_cfg:,
+        client:,
+        message_modules:,
+        discovered:,
+      )
+    })
+    |> result.map_error(fn(msg) { msg }),
+  )
+
+  io.println("libero: done")
+  Ok(Nil)
+}
+
+fn run_client_codegen(
+  project_path project_path: String,
+  toml_cfg toml_cfg: toml_config.TomlConfig,
+  client client: toml_config.ClientConfig,
+  message_modules message_modules: List(scanner.MessageModule),
+  discovered discovered: List(walker.DiscoveredVariant),
+) -> Result(Nil, String) {
+  io.println("libero: generating stubs for client: " <> client.name)
+
+  // Convert TomlConfig to codegen Config for this client
+  use config <- result.try(
+    toml_config.to_codegen_config(toml_cfg, client: client.name, ws_path: "/ws"),
+  )
+
+  // Ensure generated directories exist
+  let server_generated = project_path <> "/" <> config.server_generated
+  let client_generated = project_path <> "/" <> config.client_generated
+
+  use _ <- result.try(
+    simplifile.create_directory_all(server_generated)
+    |> result.map_error(fn(err) {
+      "cannot create directory "
+      <> server_generated
+      <> ": "
+      <> simplifile.describe_error(err)
+    }),
+  )
+  use _ <- result.try(
+    simplifile.create_directory_all(client_generated)
+    |> result.map_error(fn(err) {
+      "cannot create directory "
+      <> client_generated
+      <> ": "
+      <> simplifile.describe_error(err)
+    }),
+  )
+
+  // Server-side (same for all clients, safe to overwrite)
+  use _ <- result.try(
+    codegen.write_dispatch(
+      message_modules:,
+      server_generated: config.server_generated,
+      atoms_module: config.atoms_module,
+    )
+    |> result.map_error(fn(err) {
+      gen_error.print_error(err)
+      "write_dispatch failed"
+    }),
+  )
+  use _ <- result.try(
+    codegen.write_push_wrappers(
+      message_modules:,
+      server_generated: config.server_generated,
+    )
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      "write_push_wrappers failed"
+    }),
+  )
+  use _ <- result.try(
+    codegen.write_websocket(server_generated: config.server_generated)
+    |> result.map_error(fn(err) {
+      gen_error.print_error(err)
+      "write_websocket failed"
+    }),
+  )
+  use _ <- result.try(
+    codegen.write_atoms(config:, discovered:)
+    |> result.map_error(fn(err) {
+      gen_error.print_error(err)
+      "write_atoms failed"
+    }),
+  )
+
+  // Client-side (unique per client)
+  use _ <- result.try(
+    codegen.write_send_functions(
+      message_modules:,
+      client_generated: config.client_generated,
+    )
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      "write_send_functions failed"
+    }),
+  )
+  use _ <- result.try(
+    codegen.write_config(config:)
+    |> result.map_error(fn(err) {
+      gen_error.print_error(err)
+      "write_config failed"
+    }),
+  )
+  use _ <- result.try(
+    codegen.write_register(config:, discovered:)
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      "write_register failed"
+    }),
+  )
+  use _ <- result.try(
+    codegen.write_ssr_flags(client_generated: config.client_generated)
+    |> result.map_error(fn(err) {
+      gen_error.print_error(err)
+      "write_ssr_flags failed"
+    }),
+  )
+
+  Ok(Nil)
+}
