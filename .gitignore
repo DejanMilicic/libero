@@ -2,3 +2,4 @@ build/
 erl_crash.dump
 .beans/
 .beans.yml
+test/tmp/
