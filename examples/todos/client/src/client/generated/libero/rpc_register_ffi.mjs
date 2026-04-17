@@ -36,17 +36,17 @@ export function registerAll() {
   registerConstructor("unknown_function", UnknownFunction);
   registerConstructor("internal_error", InternalError);
   if (_m0.Todo) registerConstructor("todo", _m0.Todo);
-  if (_m0.TitleRequired) registerConstructor("title_required", _m0.TitleRequired);
   if (_m0.NotFound) registerConstructor("not_found", _m0.NotFound);
+  if (_m0.TitleRequired) registerConstructor("title_required", _m0.TitleRequired);
   if (_m0.TodoParams) registerConstructor("todo_params", _m0.TodoParams);
-  if (_m0.TodosLoaded) registerConstructor("todos_loaded", _m0.TodosLoaded);
-  if (_m0.TodoDeleted) registerConstructor("todo_deleted", _m0.TodoDeleted);
-  if (_m0.TodoToggled) registerConstructor("todo_toggled", _m0.TodoToggled);
   if (_m0.TodoCreated) registerConstructor("todo_created", _m0.TodoCreated);
-  if (_m0.LoadAll) registerConstructor("load_all", _m0.LoadAll);
-  if (_m0.Delete) registerConstructor("delete", _m0.Delete);
-  if (_m0.Toggle) registerConstructor("toggle", _m0.Toggle);
+  if (_m0.TodoToggled) registerConstructor("todo_toggled", _m0.TodoToggled);
+  if (_m0.TodoDeleted) registerConstructor("todo_deleted", _m0.TodoDeleted);
+  if (_m0.TodosLoaded) registerConstructor("todos_loaded", _m0.TodosLoaded);
   if (_m0.Create) registerConstructor("create", _m0.Create);
+  if (_m0.Toggle) registerConstructor("toggle", _m0.Toggle);
+  if (_m0.Delete) registerConstructor("delete", _m0.Delete);
+  if (_m0.LoadAll) registerConstructor("load_all", _m0.LoadAll);
   } catch (e) {
     registered = false;
     const msg = "libero: type registration failed. "

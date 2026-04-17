@@ -191,6 +191,7 @@ class ETFDecoder {
         return this.decodeTuple(this.readUint32());
 
       case 106: // NIL_EXT (empty list)
+        if (this.raw) return [];
         return arrayToGleamList([]);
 
       case 108: // LIST_EXT
@@ -204,6 +205,7 @@ class ETFDecoder {
         for (let i = 0; i < len; i++) {
           elements.push(this.readUint8());
         }
+        if (this.raw) return elements;
         return arrayToGleamList(elements);
       }
 
@@ -311,6 +313,7 @@ class ETFDecoder {
     if (tailTag !== 106) {
       throw new Error("ETF decode: improper list (non-nil tail) - Gleam cannot produce these");
     }
+    if (this.raw) return elements;
     return arrayToGleamList(elements);
   }
 
@@ -342,7 +345,8 @@ class ETFDecoder {
       // Standalone mode - fall back to JS Map
       return new Map(pairs);
     }
-    return dictFromList(arrayToGleamList(pairs));
+    const pairsList = this.raw ? pairs : arrayToGleamList(pairs);
+    return dictFromList(pairsList);
   }
 }
 
