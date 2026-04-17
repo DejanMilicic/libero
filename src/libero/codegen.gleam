@@ -803,22 +803,45 @@ pub fn write_main(
   }
   let ws_module = dispatch_module <> "/websocket"
 
-  let js_routes = case js_client_names {
-    [] -> ""
-    _ ->
-      list.map(js_client_names, fn(name) {
-        "        _, [\""
-        <> name
-        <> "\", ..path] ->
+  // Build static file routes for JS clients and an index HTML route
+  // for the first JS client (serves the SPA shell).
+  let #(js_routes, index_route) = case js_client_names {
+    [] -> #("", "
+        _, _ ->
+          response.new(404)
+          |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Not found\")))")
+    [first_js, ..] -> {
+      let routes =
+        list.map(js_client_names, fn(name) {
+          "        _, [\""
+          <> name
+          <> "\", ..path] ->
           serve_file(
             \"clients/"
-        <> name
-        <> "/build/dev/javascript/\" <> string.join(path, \"/\"),
+          <> name
+          <> "/build/dev/javascript/\" <> string.join(path, \"/\"),
             \"application/javascript\",
           )"
-      })
-      |> string.join("\n")
-      |> fn(routes) { "\n" <> routes }
+        })
+        |> string.join("\n")
+        |> fn(r) { "\n" <> r }
+      let index = "
+        _, _ -> serve_html(\"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset=\\\"utf-8\\\">
+  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\">
+</head>
+<body>
+  <div id=\\\"app\\\"></div>
+  <script type=\\\"module\\\">
+    import { main } from \\\"/" <> first_js <> "/" <> first_js <> "/app.mjs\\\";
+    main();
+  </script>
+</body>
+</html>\")"
+      #(routes, index)
+    }
   }
 
   let content =
@@ -864,10 +887,7 @@ pub fn main() {
           )
         http.Post, [\"rpc\"] -> handle_rpc(req, state)"
     <> js_routes
-    <> "
-        _, _ ->
-          response.new(404)
-          |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Not found\")))
+    <> index_route <> "
       }
     }
     |> mist.new
@@ -895,6 +915,12 @@ fn handle_rpc(
       response.new(400)
       |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Bad request\")))
   }
+}
+
+fn serve_html(html: String) -> response.Response(mist.ResponseData) {
+  response.new(200)
+  |> response.set_header(\"content-type\", \"text/html\")
+  |> response.set_body(mist.Bytes(bytes_tree.from_string(html)))
 }
 
 fn serve_file(
