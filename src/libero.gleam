@@ -113,6 +113,8 @@ fn legacy_run(
   use message_modules <- result.try(scanner.validate_conventions(
     message_modules: message_modules,
     server_src: server_src,
+    shared_state_path: server_src <> "/server/shared_state.gleam",
+    app_error_path: server_src <> "/server/app_error.gleam",
   ))
   use _ <- result.try(scanner.validate_msg_from_server_fields(message_modules:))
 

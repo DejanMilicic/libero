@@ -69,6 +69,8 @@ fn run_with_clients(
     scanner.validate_conventions(
       message_modules: message_modules,
       server_src: server_src,
+      shared_state_path: shared_src <> "/shared_state.gleam",
+      app_error_path: shared_src <> "/app_error.gleam",
     )
     |> result.map_error(fn(errors) {
       list.each(errors, gen_error.print_error)
