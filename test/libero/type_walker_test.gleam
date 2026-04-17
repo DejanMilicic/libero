@@ -97,3 +97,46 @@ pub fn walk_empty_module_files_returns_error_test() {
       module_files: dict.new(),
     )
 }
+
+pub fn walk_populates_primitive_field_types_test() {
+  let assert Ok(#(modules, module_files)) =
+    scanner.scan_message_modules(shared_src: "examples/todos/shared/src/shared")
+  let assert Ok(discovered) =
+    walker.walk_message_registry_types(
+      message_modules: modules,
+      module_files: module_files,
+    )
+
+  // TodoParams(title: String) carries a single String field.
+  let assert Ok(todo_params) =
+    list.find(discovered, fn(v) { v.variant_name == "TodoParams" })
+  let assert [walker.StringField] = todo_params.fields
+}
+
+pub fn walk_resolves_user_type_in_field_test() {
+  let assert Ok(#(modules, module_files)) =
+    scanner.scan_message_modules(shared_src: "examples/todos/shared/src/shared")
+  let assert Ok(discovered) =
+    walker.walk_message_registry_types(
+      message_modules: modules,
+      module_files: module_files,
+    )
+
+  // TodosLoaded(Result(List(Todo), TodoError)) - exercises Result, List, and UserType.
+  let assert Ok(loaded) =
+    list.find(discovered, fn(v) { v.variant_name == "TodosLoaded" })
+  let assert [
+    walker.ResultOf(
+      ok: walker.ListOf(walker.UserType(
+        module_path: "shared/todos",
+        type_name: "Todo",
+        args: [],
+      )),
+      err: walker.UserType(
+        module_path: "shared/todos",
+        type_name: "TodoError",
+        args: [],
+      ),
+    ),
+  ] = loaded.fields
+}

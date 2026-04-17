@@ -13,6 +13,22 @@ import libero/gen_error.{
 }
 import libero/scanner.{type MessageModule}
 
+/// The Gleam type of a single variant field, resolved to a structured form.
+pub type FieldType {
+  UserType(module_path: String, type_name: String, args: List(FieldType))
+  ListOf(element: FieldType)
+  OptionOf(inner: FieldType)
+  ResultOf(ok: FieldType, err: FieldType)
+  DictOf(key: FieldType, value: FieldType)
+  TupleOf(elements: List(FieldType))
+  IntField
+  FloatField
+  StringField
+  BoolField
+  BitArrayField
+  TypeVar(name: String)
+}
+
 /// A single discovered variant to emit as a registerConstructor call.
 pub type DiscoveredVariant {
   DiscoveredVariant(
@@ -26,6 +42,8 @@ pub type DiscoveredVariant {
     /// Used by the JS ETF encoder to distinguish Int from Float
     /// (JS erases this distinction at runtime).
     float_field_indices: List(Int),
+    /// Structured types of each field, in declaration order.
+    fields: List(FieldType),
   )
 }
 
@@ -219,12 +237,21 @@ fn process_type_ast(
         list.fold(custom_type.variants, #([], []), fn(acc, variant) {
           let #(disc_acc, queue_acc) = acc
           let float_indices = detect_float_fields(variant.fields)
+          let fields =
+            list.map(variant.fields, fn(field) {
+              let field_type = case field {
+                glance.LabelledVariantField(item:, ..) -> item
+                glance.UnlabelledVariantField(item:) -> item
+              }
+              field_type_of(t: field_type, resolver:, current_module: module_path)
+            })
           let disc_item =
             DiscoveredVariant(
               module_path: module_path,
               variant_name: variant.name,
               atom_name: to_snake_case(variant.name),
               float_field_indices: float_indices,
+              fields:,
             )
           let field_refs =
             collect_variant_field_refs(
@@ -397,6 +424,69 @@ fn collect_type_refs(
     glance.FunctionType(..) -> []
     glance.VariableType(..) -> []
     glance.HoleType(..) -> []
+  }
+}
+
+/// Convert a glance.Type into a FieldType, resolving named types via the resolver.
+fn field_type_of(
+  t t: glance.Type,
+  resolver resolver: TypeResolver,
+  current_module current_module: String,
+) -> FieldType {
+  case t {
+    glance.VariableType(name:, ..) -> TypeVar(name:)
+    glance.TupleType(elements:, ..) ->
+      TupleOf(list.map(elements, fn(e) {
+        field_type_of(t: e, resolver:, current_module:)
+      }))
+    glance.FunctionType(..) -> TypeVar(name: "_fn")
+    glance.HoleType(..) -> TypeVar(name: "_")
+    glance.NamedType(name:, module:, parameters:, ..) ->
+      case module, name, parameters {
+        // Primitives - no module qualifier needed
+        option.None, "Int", [] -> IntField
+        option.None, "Float", [] -> FloatField
+        option.None, "String", [] -> StringField
+        option.None, "Bool", [] -> BoolField
+        option.None, "BitArray", [] -> BitArrayField
+        option.None, "Nil", [] -> TupleOf([])
+        // List
+        option.None, "List", [elem] ->
+          ListOf(field_type_of(t: elem, resolver:, current_module:))
+        // Option (gleam/option)
+        option.None, "Option", [inner] ->
+          OptionOf(field_type_of(t: inner, resolver:, current_module:))
+        // Result
+        option.None, "Result", [ok, err] ->
+          ResultOf(
+            ok: field_type_of(t: ok, resolver:, current_module:),
+            err: field_type_of(t: err, resolver:, current_module:),
+          )
+        // Dict
+        option.None, "Dict", [key, value] ->
+          DictOf(
+            key: field_type_of(t: key, resolver:, current_module:),
+            value: field_type_of(t: value, resolver:, current_module:),
+          )
+        // Everything else: resolve to a UserType
+        _, _, _ -> {
+          let args =
+            list.map(parameters, fn(p) {
+              field_type_of(t: p, resolver:, current_module:)
+            })
+          let resolved_module =
+            resolve_type_module(
+              name: name,
+              module: module,
+              resolver: resolver,
+              current_module: current_module,
+            )
+          let mp = result.unwrap(resolved_module, current_module)
+          let original_name =
+            result.unwrap(dict.get(resolver.original_names, name), name)
+          UserType(module_path: mp, type_name: original_name, args:)
+        }
+      }
   }
 }
 
