@@ -28,7 +28,7 @@ pub type MsgFromServer {
 
 [`MsgFromClient`](https://github.com/pairshaped/libero/blob/master/examples/todos/shared/src/shared/todos.gleam) contains messages from the client to the server. `MsgFromServer` contains messages the server sends back, both as responses and as server-initiated pushes. A module can define one or both.
 
-Each `MsgFromServer` variant wraps a single value. Dispatch strips the variant tag before sending the response (the client already knows which response type to expect via FIFO pairing). Wrapping a `Result(payload, error)` lets the client use `RemoteData` to collapse success, domain error, and framework error into one typed state. If a response needs multiple values, group them in a record or tuple inside the single field.
+Each `MsgFromServer` variant wraps a single value, typically a `Result(payload, error)` for use with `RemoteData`. If a response needs multiple values, group them in a record or tuple.
 
 ## Example usage
 
@@ -66,61 +66,16 @@ pub fn update_from_client(
 
 ## WebSocket setup
 
-The generated [`websocket.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/server/src/server/generated/libero/websocket.gleam) handles dispatch, push frame forwarding, and topic cleanup. One call in your server:
+The generated [`websocket.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/server/src/server/generated/libero/websocket.gleam) handles dispatch and push frame forwarding. One call in your server:
 
 ```gleam
 import server/generated/libero/websocket as ws
 
 _, ["ws"] ->
-  ws.upgrade(request: req, state: shared, topics: ["todos"])
+  ws.upgrade(request: req, state: shared, topics: [])
 ```
 
-The `topics` parameter controls which pg groups the client joins on connect. The generated handler automatically leaves all topics on disconnect.
-
-## Server push
-
-The server can push messages to connected clients without a prior request. Uses BEAM [pg](https://www.erlang.org/doc/apps/kernel/pg.html) groups for topic-based subscriptions, no external dependencies.
-
-```gleam
-// Server — in a handler, push to all subscribers via generated wrapper
-import server/generated/libero/todos as todos_push
-todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
-
-// Server — targeted push to one client
-push.register(client_id: "user:42")
-todos_push.send_to_client(client_id: "user:42", msg: Created(item))
-```
-
-```gleam
-// Client — subscribe to pushes (in init)
-todos_rpc.update_from_server(handler: fn(raw) { GotPush(wire.coerce(raw)) })
-```
-
-Push is opt-in. If you never call `update_from_server`, push frames are silently dropped. If unused, tree shaking removes the generated code.
-
-## HTTP clients
-
-The generated `dispatch.handle(state:, data:)` function takes a `BitArray` and returns a `BitArray`. It doesn't know or care about the transport. This means any BEAM process can be a Libero client by sending ETF-encoded messages over HTTP POST. No WebSocket and no Libero dependency needed.
-
-This works because [ETF](https://www.erlang.org/doc/apps/erts/erl_ext_dist.html) is the BEAM's native serialization format. Any BEAM client (Gleam, Erlang, Elixir) can call `term_to_binary` on the same shared types the browser uses, POST the bytes, and decode the response with `binary_to_term`. The server runs the same dispatch logic either way.
-
-```gleam
-// Server: add an HTTP route that calls the same dispatch
-fn handle_rpc(req, state) {
-  use body <- wisp.require_body(req)
-  let #(response, _, _) = dispatch.handle(state:, data: body)
-  wisp.ok() |> wisp.set_body(wisp.Bytes(bytes_tree.from_bit_array(response)))
-}
-```
-
-```gleam
-// Any BEAM client: encode, POST, decode
-let payload = term_to_binary(#("shared/todos", LoadAll))
-let assert Ok(response) = httpc.request(Post, url, payload)
-let result = binary_to_term(response.body)
-```
-
-See [`examples/todos/cli/`](https://github.com/pairshaped/libero/blob/master/examples/todos/cli/) for a runnable CLI example with argument parsing.
+If you need [server push](#server-push), pass topic names in the `topics` list to subscribe clients on connect.
 
 ## Codegen CLI
 
@@ -182,6 +137,51 @@ Libero's API uses a directional naming convention:
 |---|---|---|
 | Client → Server | `send_to_server(msg:)` | `update_from_client(msg:)` |
 | Server → Client | `update_from_server(handler:)` | generated `send_to_client(client_id:, ...)` / `send_to_clients(topic:, ...)` |
+
+## Server push (optional)
+
+The server can push messages to connected clients without a prior request. Uses BEAM [pg](https://www.erlang.org/doc/apps/kernel/pg.html) groups for topic-based subscriptions, no external dependencies.
+
+```gleam
+// Server — in a handler, push to all subscribers via generated wrapper
+import server/generated/libero/todos as todos_push
+todos_push.send_to_clients(topic: "todos", msg: AllLoaded(all()))
+
+// Server — targeted push to one client
+push.register(client_id: "user:42")
+todos_push.send_to_client(client_id: "user:42", msg: Created(item))
+```
+
+```gleam
+// Client — subscribe to pushes (in init)
+todos_rpc.update_from_server(handler: fn(raw) { GotPush(wire.coerce(raw)) })
+```
+
+Push is opt-in. If you never call `update_from_server`, push frames are silently dropped. If unused, tree shaking removes the generated code.
+
+## HTTP clients (optional)
+
+The generated `dispatch.handle(state:, data:)` function takes a `BitArray` and returns a `BitArray`. It doesn't know or care about the transport. This means any BEAM process can be a Libero client by sending ETF-encoded messages over HTTP POST. No WebSocket and no Libero dependency needed.
+
+This works because [ETF](https://www.erlang.org/doc/apps/erts/erl_ext_dist.html) is the BEAM's native serialization format. Any BEAM client (Gleam, Erlang, Elixir) can call `term_to_binary` on the same shared types the browser uses, POST the bytes, and decode the response with `binary_to_term`. The server runs the same dispatch logic either way.
+
+```gleam
+// Server: add an HTTP route that calls the same dispatch
+fn handle_rpc(req, state) {
+  use body <- wisp.require_body(req)
+  let #(response, _, _) = dispatch.handle(state:, data: body)
+  wisp.ok() |> wisp.set_body(wisp.Bytes(bytes_tree.from_bit_array(response)))
+}
+```
+
+```gleam
+// Any BEAM client: encode, POST, decode
+let payload = term_to_binary(#("shared/todos", LoadAll))
+let assert Ok(response) = httpc.request(Post, url, payload)
+let result = binary_to_term(response.body)
+```
+
+See [`examples/todos/cli/`](https://github.com/pairshaped/libero/blob/master/examples/todos/cli/) for a runnable CLI example with argument parsing.
 
 ## License
 
