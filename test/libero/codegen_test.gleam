@@ -10,8 +10,8 @@ pub fn dispatch_contains_state_threading_test() {
   // Build a module with handler_module set, matching the todos example
   let modules = [
     scanner.MessageModule(
-      module_path: "shared/todos",
-      file_path: "examples/todos/shared/src/shared/todos.gleam",
+      module_path: "core/messages",
+      file_path: "examples/todos/src/core/messages.gleam",
       has_msg_from_client: True,
       has_msg_from_server: True,
       handler_modules: ["server/store"],
@@ -51,20 +51,20 @@ pub fn dispatch_contains_state_threading_test() {
 
 pub fn send_function_contains_module_path_test() {
   let assert Ok(#(modules, _module_files)) =
-    scanner.scan_message_modules(shared_src: "examples/todos/shared/src/shared")
+    scanner.scan_message_modules(shared_src: "examples/todos/src/core")
   let output_dir = "build/.test_codegen_send"
   let assert Ok(Nil) =
     codegen.write_send_functions(
       message_modules: modules,
       client_generated: output_dir,
     )
-  let assert Ok(content) = simplifile.read(output_dir <> "/todos.gleam")
+  let assert Ok(content) = simplifile.read(output_dir <> "/messages.gleam")
 
   // Must import the shared type
   let assert True =
-    string.contains(content, "import shared/todos.{type MsgFromClient}")
+    string.contains(content, "import core/messages.{type MsgFromClient}")
   // Must reference the correct module path
-  let assert True = string.contains(content, "module: \"shared/todos\"")
+  let assert True = string.contains(content, "module: \"core/messages\"")
   // Must import rpc
   let assert True = string.contains(content, "import libero/rpc")
   // Must import rpc_register for auto-registration
@@ -78,7 +78,7 @@ pub fn send_function_contains_module_path_test() {
 
 pub fn register_ffi_contains_framework_types_test() {
   let assert Ok(#(modules, module_files)) =
-    scanner.scan_message_modules(shared_src: "examples/todos/shared/src/shared")
+    scanner.scan_message_modules(shared_src: "examples/todos/src/core")
   let assert Ok(discovered) =
     walker.walk_message_registry_types(
       message_modules: modules,
