@@ -128,12 +128,6 @@ fn run(
     |> result.map_error(fn(e) { [e] }),
   )
 
-  // Generate client-side type registration (gleam + mjs).
-  use _ <- result.try(codegen.write_register(
-    config: config,
-    discovered: discovered,
-  ))
-
   // Generate typed decoder Gleam wrapper + FFI.
   use _ <- result.try(
     codegen.write_decoders_gleam(config:)

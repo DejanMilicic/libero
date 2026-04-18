@@ -3,11 +3,14 @@
 // Wire shape: Erlang External Term Format (ETF), subset used by Gleam.
 // WebSocket uses binary frames (ArrayBuffer).
 //
-// The decoder reconstructs custom type instances using a constructor
-// registry. Gleam lists are rebuilt as linked lists so `gleam/list`
-// operations work on them.
+// Gleam lists are rebuilt as linked lists so `gleam/list` operations
+// work on them. Custom type decoding is handled by the typed decoder
+// generated per consumer (rpc_decoders_ffi.mjs).
 
 import { getMsgFromServerDecoder } from "./decoders_prelude.mjs";
+import { Ok, Error as ResultError, CustomType, Empty, NonEmpty } from "../../gleam_stdlib/gleam.mjs";
+import { Some, None } from "../../gleam_stdlib/gleam/option.mjs";
+import { from_list as dictFromList } from "../../gleam_stdlib/gleam/dict.mjs";
 
 // ---------- Identity helper (for Gleam FFI) ----------
 
@@ -36,43 +39,7 @@ export function registerFloatFields(atomName, fieldIndices) {
   floatFieldRegistry.set(atomName, new Set(fieldIndices));
 }
 
-// ---------- Constructor registry ----------
-
-const registry = new Map();
-
-export function registerConstructor(atomName, ctor) {
-  registry.set(atomName, ctor);
-}
-
-// Gleam list constructors - set at module load time from the prelude.
-let Empty = null;
-let NonEmpty = null;
-// Gleam CustomType base class - set from the prelude so the encoder
-// can detect custom type instances and serialize them as tagged tuples.
-let GleamCustomType = null;
-
-export function setListCtors(empty, nonEmpty) {
-  Empty = empty;
-  NonEmpty = nonEmpty;
-}
-
-// gleam/dict's `from_list` - set at module load time. The server
-// encodes Dict values as MAP_EXT. The decoder converts them back to
-// a Gleam Dict instance via from_list.
-let dictFromList = null;
-
-export function setDictFromList(fn) {
-  dictFromList = fn;
-}
-
-export function setGleamCustomType(ctor) {
-  GleamCustomType = ctor;
-}
-
 function arrayToGleamList(arr) {
-  if (Empty === null || NonEmpty === null) {
-    return arr; // standalone mode (Node REPL)
-  }
   let list = new Empty();
   for (let i = arr.length - 1; i >= 0; i--) {
     list = new NonEmpty(arr[i], list);
@@ -96,10 +63,8 @@ function gleamListToArray(list) {
 const utf8Decoder = new TextDecoder();
 
 class ETFDecoder {
-  // raw=true skips the constructor registry: atoms stay as strings and
-  // tagged tuples stay as plain JS arrays. Used when the typed decoder
-  // will re-interpret the result, so we don't want partial reconstruction
-  // from the global registry first.
+  // raw=true: atoms stay as strings and tagged tuples stay as plain
+  // JS arrays. Used when the typed decoder will re-interpret the result.
   constructor(input, raw = false) {
     // Accept any of: ArrayBuffer (WebSocket onmessage with binaryType
     // "arraybuffer"), Uint8Array, or a Gleam JS BitArray (which exposes
@@ -238,20 +203,14 @@ class ETFDecoder {
     if (name === "true") return true;
     if (name === "false") return false;
     if (name === "nil" || name === "undefined") return undefined;
-    // In raw mode, skip registry - return atom as string.
-    if (!this.raw) {
-      // 0-arity constructor
-      const Ctor = registry.get(name);
-      if (Ctor) return new Ctor();
-    }
-    // Unknown atom (or raw mode) - return as string
+    // Return atom as string - typed decoder resolves constructors.
     return name;
   }
 
   decodeTuple(arity) {
     if (arity === 0) return [];
 
-    // Peek at first element to check for atom tag (constructor)
+    // Peek at first element to check for atom tag
     const firstTag = this.bytes[this.offset];
     if (firstTag === 118 || firstTag === 119) {
       // First element is an atom - read the atom name directly
@@ -271,20 +230,8 @@ class ETFDecoder {
         return elements;
       }
 
-      // Look up constructor in registry (skipped in raw mode)
-      if (!this.raw) {
-        const Ctor = registry.get(atomName);
-        if (Ctor) {
-          const fields = [];
-          for (let i = 1; i < arity; i++) {
-            fields.push(this.decodeTerm());
-          }
-          return new Ctor(...fields);
-        }
-      }
-
-      // Unknown atom-tagged tuple (or raw mode) - decode remaining and return array
-      // Use the atom name as first element (string representation)
+      // Atom-tagged tuple: return as array with atom string as first element.
+      // Typed decoder (rpc_decoders_ffi.mjs) resolves the correct constructor.
       const elements = [atomName];
       for (let i = 1; i < arity; i++) {
         elements.push(this.decodeTerm());
@@ -340,10 +287,6 @@ class ETFDecoder {
       const key = this.decodeTerm();
       const val = this.decodeTerm();
       pairs.push([key, val]);
-    }
-    if (dictFromList === null) {
-      // Standalone mode - fall back to JS Map
-      return new Map(pairs);
     }
     const pairsList = this.raw ? pairs : arrayToGleamList(pairs);
     return dictFromList(pairsList);
@@ -473,7 +416,7 @@ class ETFEncoder {
     }
 
     // Gleam custom type instance
-    if (GleamCustomType && value instanceof GleamCustomType) {
+    if (value instanceof CustomType) {
       const ctorName = snakeCase(value.constructor.name);
       const keys = Object.keys(value);
       if (keys.length === 0) {
@@ -663,18 +606,15 @@ export function encode_value(value) {
 // Decode a standalone Gleam value from an ETF binary. Used by the
 // public `libero.wire.decode` function. Symmetric with `encode_value`
 // above - decodes a single value, not a call envelope. Custom type
-// constructors must have been registered via `register_all()` at
-// boot for the decoder to rebuild them correctly.
+// reconstruction is handled by the typed decoder (rpc_decoders_ffi.mjs).
 export function decode_value(buffer) {
   const decoder = new ETFDecoder(buffer);
   return decoder.decode();
 }
 
-// Raw variant of decode_value: skips the constructor registry entirely.
-// Atoms stay as strings and tagged tuples stay as plain JS arrays.
-// Used internally when the typed decoder (decode_msg_from_server) will
-// re-interpret the result - we want the raw structure, not partial
-// reconstruction via the global registry.
+// Raw variant of decode_value: atoms stay as strings and tagged tuples
+// stay as plain JS arrays. Used internally when the typed decoder
+// (decode_msg_from_server) will re-interpret the result.
 export function decode_value_raw(buffer) {
   const decoder = new ETFDecoder(buffer, true);
   return decoder.decode();
@@ -682,30 +622,14 @@ export function decode_value_raw(buffer) {
 
 // Safe variant of decode_value that returns a Result instead of throwing.
 // Used by the public `libero.wire.decode_safe` function.
-//
-// NOTE: This function looks up Ok/Error/DecodeError constructors from the
-// registry, falling back to plain objects if they aren't registered yet.
-// Ok and Error are registered via top-level `await` above (guaranteed
-// before any consumer code runs). DecodeError is registered via a
-// fire-and-forget dynamic import to avoid a circular dependency with
-// wire.mjs - it resolves after module init but before any client boot
-// code calls decode_safe. If this function is ever called during module
-// initialization (before register_all), the plain-object fallback won't
-// match Gleam pattern matching. In practice this can't happen because
-// decode_safe is only reachable after the consumer calls register_all().
 export function decode_safe(buffer) {
   try {
     const decoder = new ETFDecoder(buffer);
     const value = decoder.decode();
-    const okCtor = registry.get("ok");
-    if (okCtor) return new okCtor(value);
-    return { type: "Ok", 0: value };
+    return new Ok(value);
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
-    const errorCtor = registry.get("error");
-    const decodeCtor = registry.get("decode_error");
-    if (errorCtor && decodeCtor) return new errorCtor(new decodeCtor(msg));
-    return { type: "Error", 0: { type: "DecodeError", 0: msg } };
+    return new ResultError({ type: "DecodeError", 0: msg });
   }
 }
 
@@ -731,14 +655,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 // Push handler registry: module path → callback
 const pushHandlers = new Map();
 
-// Build a connection-error value using registered constructors.
-// Falls back to a plain object if constructors aren't registered yet.
+// Build a connection-error value using imported constructors.
 function makeConnectionError(message) {
-  const errCtor = registry.get("error");
-  const intErrCtor = registry.get("internal_error");
-  if (errCtor && intErrCtor) {
-    return new errCtor(new intErrCtor("", message));
-  }
   return { type: "Error", 0: { type: "InternalError", 0: "", 1: message } };
 }
 
@@ -777,13 +695,8 @@ function ensureSocket(url) {
 
     if (tag === 0x01) {
       // Push frame: payload is ETF-encoded {module, MsgFromServer_value}.
-      // If a typed decoder has been registered (by the generated
-      // rpc_decoders_ffi.mjs at module load), decode the raw bytes without
-      // registry reconstruction and pass the result through the typed decoder.
-      // This gives correct type context for nested variant fields instead of
-      // relying on the global constructor registry.
-      // Without a typed decoder (before rpc_decoders_ffi is loaded), fall
-      // back to the registry path so existing behaviour is preserved.
+      // The typed decoder (registered by rpc_decoders_ffi.mjs at module load)
+      // decodes raw bytes and resolves the correct constructor per type.
       const typedDecoder = getMsgFromServerDecoder();
       let decodedModule, decodedValue;
       if (typedDecoder) {
@@ -809,10 +722,8 @@ function ensureSocket(url) {
 
     // Response frame (tag 0x00): matched to pending callback in FIFO order.
     // The response wire shape is Result(MsgFromServer.Variant(payload), RpcError).
-    // If a typed decoder is registered, decode raw (bypassing the global
-    // constructor registry) and apply it to the inner MsgFromServer term so
-    // nested payload types use the correct module-specific constructors.
-    // Without a typed decoder, fall back to the registry path.
+    // If a typed decoder is registered, decode raw and apply it to the inner
+    // MsgFromServer term so nested payload types use the correct constructors.
     let decoded;
     const typedDecoder = getMsgFromServerDecoder();
     if (typedDecoder) {
@@ -822,9 +733,8 @@ function ensureSocket(url) {
       const raw = decode_value_raw(payload);
       if (Array.isArray(raw) && raw[0] === "ok" && raw[1] !== undefined) {
         // Ok branch: apply the typed decoder to the inner MsgFromServer value.
-        const okCtor = registry.get("ok");
         const typedVariant = typedDecoder(raw[1]);
-        decoded = okCtor ? new okCtor(typedVariant) : { type: "Ok", 0: typedVariant };
+        decoded = new Ok(typedVariant);
       } else {
         // Error branch or unexpected shape: fall back to registry decode.
         decoded = decode_value(payload);

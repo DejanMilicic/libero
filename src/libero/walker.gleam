@@ -40,7 +40,7 @@ pub type DiscoveredType {
   )
 }
 
-/// A single discovered variant to emit as a registerConstructor call.
+/// A single discovered variant, used in typed decoder codegen.
 pub type DiscoveredVariant {
   DiscoveredVariant(
     /// Gleam module path, e.g. "shared/discount".

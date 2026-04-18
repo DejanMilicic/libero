@@ -6,7 +6,7 @@
 //// across all subdomains.
 
 pub fn ws_url() -> String {
-  resolve_ws_url("/ws/rpc")
+  resolve_ws_url("/ws")
 }
 
 @external(javascript, "./rpc_config_ffi.mjs", "resolveWsUrl")

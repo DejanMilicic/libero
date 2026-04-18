@@ -31,10 +31,8 @@ pub type Config {
     /// path-to-module convention (@ separators).
     atoms_module: String,
     config_output: String,
-    register_gleam_output: String,
-    register_ffi_output: String,
     /// Bundle-relative prefix that prepends every import in the
-    /// generated FFI .mjs file. Depth depends on where the register
+    /// generated FFI .mjs file. Depth depends on where the decoder
     /// files land inside the consumer client package.
     register_relpath_prefix: String,
     /// Path to the generated rpc_decoders_ffi.mjs file.
@@ -133,8 +131,8 @@ pub fn build_config(
   shared_root shared_root: Result(String, Nil),
   server_root server_root: Result(String, Nil),
 ) -> Config {
-  // In the final JS bundle, registration files land at:
-  //   <bundle_root>/<client_pkg>/client/generated/libero/[<ns>/]rpc_register_ffi.mjs
+  // In the final JS bundle, decoder files land at:
+  //   <bundle_root>/<client_pkg>/client/generated/libero/[<ns>/]rpc_decoders_ffi.mjs
   // So from the ffi file's directory, the bundle root is:
   //   - 4 levels up for no-namespace (client_pkg/client/generated/libero/)
   //   - 5 levels up for namespaced  (client_pkg/client/generated/libero/<ns>/)
@@ -142,8 +140,6 @@ pub fn build_config(
     atoms_output,
     atoms_module,
     config_output,
-    register_gleam_output,
-    register_ffi_output,
     register_relpath_prefix,
     decoders_ffi_output,
     decoders_gleam_output,
@@ -152,8 +148,6 @@ pub fn build_config(
       "src/server@generated@libero@rpc_atoms.erl",
       "server@generated@libero@rpc_atoms",
       client_root <> "/src/client/generated/libero/rpc_config.gleam",
-      client_root <> "/src/client/generated/libero/rpc_register.gleam",
-      client_root <> "/src/client/generated/libero/rpc_register_ffi.mjs",
       "../../../../",
       client_root <> "/src/client/generated/libero/rpc_decoders_ffi.mjs",
       client_root <> "/src/client/generated/libero/rpc_decoders.gleam",
@@ -165,14 +159,6 @@ pub fn build_config(
         <> "/src/client/generated/libero/"
         <> ns
         <> "/rpc_config.gleam",
-      client_root
-        <> "/src/client/generated/libero/"
-        <> ns
-        <> "/rpc_register.gleam",
-      client_root
-        <> "/src/client/generated/libero/"
-        <> ns
-        <> "/rpc_register_ffi.mjs",
       "../../../../../",
       client_root
         <> "/src/client/generated/libero/"
@@ -214,8 +200,6 @@ pub fn build_config(
     atoms_output: atoms_output,
     atoms_module: atoms_module,
     config_output: config_output,
-    register_gleam_output: register_gleam_output,
-    register_ffi_output: register_ffi_output,
     register_relpath_prefix: register_relpath_prefix,
     decoders_ffi_output: decoders_ffi_output,
     decoders_gleam_output: decoders_gleam_output,
