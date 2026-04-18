@@ -1,13 +1,17 @@
 -module(todos_ets_ffi).
 -export([init/0, insert/2, lookup/1, delete/1, all/0, next_id/0]).
 
+-define(COUNTER_KEY, '$next_id').
+
 init() ->
     case ets:whereis(todos) of
         undefined ->
             ets:new(todos, [named_table, public, set]),
+            ets:insert(todos, {?COUNTER_KEY, 0}),
             nil;
         _ ->
             ets:delete_all_objects(todos),
+            ets:insert(todos, {?COUNTER_KEY, 0}),
             nil
     end.
 
@@ -26,9 +30,8 @@ delete(Id) ->
     nil.
 
 all() ->
-    [V || {_, V} <- ets:tab2list(todos)].
+    [V || {K, V} <- ets:tab2list(todos), K =/= ?COUNTER_KEY].
 
-%% Simple auto-increment. Not safe under concurrent writes —
-%% use ets:update_counter/3 with a dedicated counter key for production.
+%% Monotonically increasing counter — safe after deletions.
 next_id() ->
-    ets:info(todos, size) + 1.
+    ets:update_counter(todos, ?COUNTER_KEY, 1).

@@ -459,13 +459,15 @@ fn field_type_of(
     glance.HoleType(..) -> TypeVar(name: "_")
     glance.NamedType(name:, module:, parameters:, ..) ->
       case module, name, parameters {
-        // Primitives - no module qualifier needed
-        option.None, "Int", [] -> IntField
-        option.None, "Float", [] -> FloatField
-        option.None, "String", [] -> StringField
-        option.None, "Bool", [] -> BoolField
-        option.None, "BitArray", [] -> BitArrayField
-        option.None, "Nil", [] -> NilField
+        // Primitives (unqualified or gleam-qualified)
+        option.None, "Int", [] | option.Some("gleam"), "Int", [] -> IntField
+        option.None, "Float", [] | option.Some("gleam"), "Float", [] -> FloatField
+        option.None, "String", [] | option.Some("gleam"), "String", [] ->
+          StringField
+        option.None, "Bool", [] | option.Some("gleam"), "Bool", [] -> BoolField
+        option.None, "BitArray", [] | option.Some("gleam"), "BitArray", [] ->
+          BitArrayField
+        option.None, "Nil", [] | option.Some("gleam"), "Nil", [] -> NilField
         // List (unqualified or qualified)
         option.None, "List", [elem]
         | option.Some("gleam"), "List", [elem]

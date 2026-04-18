@@ -51,7 +51,7 @@ function gleamListToArray(list) {
   if (Array.isArray(list)) return list;
   const out = [];
   let cur = list;
-  while (cur && cur.head !== undefined) {
+  while (cur instanceof NonEmpty) {
     out.push(cur.head);
     cur = cur.tail;
   }

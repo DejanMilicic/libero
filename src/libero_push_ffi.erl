@@ -4,7 +4,7 @@
 -define(SCOPE, libero_push).
 
 ensure_started() ->
-    case pg:start_link(?SCOPE) of
+    case pg:start(?SCOPE) of
         {ok, _Pid} -> nil;
         {error, {already_started, _Pid}} -> nil
     end.

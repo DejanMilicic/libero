@@ -684,10 +684,21 @@ fn emit_tagged_union_decoder(
 }
 
 /// Produce the JS expression that decodes `term_expr` according to `ft`.
+/// `depth` tracks nesting to generate unique lambda param names (t0, t1, ...).
 fn field_decoder_call(
   ft: walker.FieldType,
   term_expr: String,
 ) -> String {
+  field_decoder_call_depth(ft, term_expr, 0)
+}
+
+fn field_decoder_call_depth(
+  ft: walker.FieldType,
+  term_expr: String,
+  depth: Int,
+) -> String {
+  let param = "t" <> int.to_string(depth)
+  let next = depth + 1
   case ft {
     walker.IntField -> "decode_int(" <> term_expr <> ")"
     walker.FloatField -> "decode_float(" <> term_expr <> ")"
@@ -696,36 +707,39 @@ fn field_decoder_call(
     walker.BitArrayField -> "decode_bit_array(" <> term_expr <> ")"
     walker.NilField -> "decode_nil(" <> term_expr <> ")"
     walker.ListOf(inner) ->
-      "decode_list_of((t) => "
-      <> field_decoder_call(inner, "t")
+      "decode_list_of((" <> param <> ") => "
+      <> field_decoder_call_depth(inner, param, next)
       <> ", "
       <> term_expr
       <> ")"
     walker.OptionOf(inner) ->
-      "decode_option_of((t) => "
-      <> field_decoder_call(inner, "t")
+      "decode_option_of((" <> param <> ") => "
+      <> field_decoder_call_depth(inner, param, next)
       <> ", "
       <> term_expr
       <> ")"
     walker.ResultOf(ok, err) ->
-      "decode_result_of((t) => "
-      <> field_decoder_call(ok, "t")
-      <> ", (t) => "
-      <> field_decoder_call(err, "t")
+      "decode_result_of((" <> param <> ") => "
+      <> field_decoder_call_depth(ok, param, next)
+      <> ", (" <> param <> ") => "
+      <> field_decoder_call_depth(err, param, next)
       <> ", "
       <> term_expr
       <> ")"
     walker.DictOf(k, v) ->
-      "decode_dict_of((t) => "
-      <> field_decoder_call(k, "t")
-      <> ", (t) => "
-      <> field_decoder_call(v, "t")
+      "decode_dict_of((" <> param <> ") => "
+      <> field_decoder_call_depth(k, param, next)
+      <> ", (" <> param <> ") => "
+      <> field_decoder_call_depth(v, param, next)
       <> ", "
       <> term_expr
       <> ")"
     walker.TupleOf(elems) -> {
       let decoders =
-        list.map(elems, fn(e) { "(t) => " <> field_decoder_call(e, "t") })
+        list.map(elems, fn(e) {
+          "(" <> param <> ") => "
+          <> field_decoder_call_depth(e, param, next)
+        })
       "decode_tuple_of(["
       <> string.join(decoders, ", ")
       <> "], "
@@ -733,7 +747,6 @@ fn field_decoder_call(
       <> ")"
     }
     walker.TypeVar(name) ->
-      // TypeVar at a root field position is a bug - emit a runtime throw.
       "(() => { throw new DecodeError(\"TypeVar<"
       <> name
       <> "> not supported at runtime\"); })()"
