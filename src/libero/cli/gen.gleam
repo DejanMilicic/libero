@@ -219,8 +219,8 @@ fn run_client_codegen(
   )
 
   // Clean up stale files from previous codegen versions
-  let _ = simplifile.delete(config.client_generated <> "/rpc_register.gleam")
-  let _ = simplifile.delete(config.client_generated <> "/rpc_register_ffi.mjs")
+  delete_if_exists(config.client_generated <> "/rpc_register.gleam")
+  delete_if_exists(config.client_generated <> "/rpc_register_ffi.mjs")
 
   // Client-side (unique per client)
   use _ <- result.try(
@@ -263,4 +263,10 @@ fn run_client_codegen(
   )
 
   Ok(Nil)
+}
+
+/// Best-effort delete — ignores errors (file may not exist).
+fn delete_if_exists(path: String) -> Nil {
+  simplifile.delete(path)
+  |> result.unwrap(Nil)
 }

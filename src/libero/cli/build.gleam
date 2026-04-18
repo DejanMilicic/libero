@@ -13,7 +13,7 @@ pub fn run(project_path project_path: String) -> Result(Nil, String) {
 
   // 2. Build server (root package)
   io.println("libero: building server...")
-  let exit_code = gleam_build(project_path)
+  let exit_code = gleam_build( project_path)
   use _ <- try(case exit_code {
     0 -> Ok(Nil)
     _ -> Error("server build failed")
@@ -30,7 +30,7 @@ pub fn run(project_path project_path: String) -> Result(Nil, String) {
       case simplifile.is_directory(client_dir) {
         Ok(True) -> {
           io.println("libero: building client: " <> client.name <> "...")
-          let code = gleam_build(client_dir)
+          let code = gleam_build( client_dir)
           case code {
             0 -> Ok(Nil)
             _ -> Error("client " <> client.name <> " build failed")
