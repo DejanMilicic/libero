@@ -50,23 +50,23 @@ unused_exports = "off"
   "thrown_away_error",
   "deep_nesting",
 ]
-"src/libero/remote_data.gleam" = [
-  "discarded_result",
+"src/libero/rpc.gleam" = [
+  # Single-target @external (JS only) — Gleam fallback bodies are
+  # unreachable on Erlang but must exist for cross-target compilation.
   "avoid_panic",
+  "discarded_result",
+]
+"src/libero/wire.gleam" = [
+  # Mixed: some functions have dual @external, ffi_decode_call has
+  # only @external(erlang) — JS fallback body is unreachable.
+  "avoid_panic",
+  "discarded_result",
 ]
 "src/libero/walker.gleam" = [
   "deep_nesting",
 ]
 "src/libero/trace.gleam" = [
   "stringly_typed_error",
-]
-"src/libero/rpc.gleam" = [
-  "avoid_panic",
-  "discarded_result",
-]
-"src/libero/wire.gleam" = [
-  "avoid_panic",
-  "discarded_result",
 ]
 # v4 CLI modules use String errors for simplicity.
 "src/libero/cli/new.gleam" = ["stringly_typed_error"]
