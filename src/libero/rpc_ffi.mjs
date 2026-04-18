@@ -288,8 +288,8 @@ class ETFDecoder {
       const val = this.decodeTerm();
       pairs.push([key, val]);
     }
-    const pairsList = this.raw ? pairs : arrayToGleamList(pairs);
-    return dictFromList(pairsList);
+    if (this.raw) return pairs;
+    return dictFromList(arrayToGleamList(pairs));
   }
 }
 
