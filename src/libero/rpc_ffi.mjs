@@ -766,7 +766,9 @@ function ensureSocket(url) {
 
   ws.addEventListener("error", () => {
     if (ws) {
-      ws.close();
+      const sock = ws;
+      ws = null;
+      sock.close();
     }
   });
 }
