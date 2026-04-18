@@ -160,7 +160,7 @@ const response = await fetch("http://localhost:8080/rpc", {
 const result = ETFDecoder.decode(new Uint8Array(await response.arrayBuffer()));
 ```
 
-The codec requires constructor registration (so it can reconstruct typed Gleam values from ETF atoms). The generated `rpc_register.gleam`/`.mjs` files handle this for Lustre clients. Non-Lustre JS clients would need equivalent registration for the types they use.
+Type reconstruction on the client side is handled by the generated typed decoders (`rpc_decoders.gleam` + `rpc_decoders_ffi.mjs`). Each type reachable from `MsgFromClient`/`MsgFromServer` gets its own decoder function; the wire's bare atoms are disambiguated by the decoder's type context rather than a global registry. This eliminates the old atom-collision bug where variants sharing a name across modules (e.g. `line_item.Paid` vs `order.Paid`) would reconstruct as the wrong type. Primitives and combinators used by the generated decoders come from the static `libero/decoders_prelude.mjs` that ships with libero. See `docs/superpowers/specs/2026-04-17-typed-decoders-design.md` and the regression test at `test/libero/collision_regression_test.gleam` for full details.
 
 For languages without an ETF library (Python, Ruby, Go, etc.), there is currently no JSON wire format. Non-BEAM, non-JS clients would need a third-party ETF library or a JSON gateway in front of Libero.
 
@@ -250,7 +250,7 @@ Flags:
 
 Generated files:
 - **Server:** `dispatch.gleam` (routes messages to handlers), `websocket.gleam` (Mist WebSocket handler), `<module>.gleam` (push wrappers per shared module), `rpc_atoms.erl` (atom pre-registration).
-- **Client:** `<module>.gleam` (RPC stubs per shared module), `rpc_config.gleam` (WebSocket URL), `rpc_register.gleam` + `.mjs` (type registry for ETF decoder).
+- **Client:** `<module>.gleam` (RPC stubs per shared module), `rpc_config.gleam` (WebSocket URL), `rpc_decoders.gleam` + `rpc_decoders_ffi.mjs` (typed decoders for ETF reconstruction).
 
 ## Wire Protocol
 

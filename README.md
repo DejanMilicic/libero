@@ -119,15 +119,15 @@ From a shared module at `shared/src/shared/todos.gleam`, Libero writes:
 - [`todos.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/todos.gleam) (client): typed `send_to_server` and `update_from_server` stubs.
 - [`todos.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/server/src/server/generated/libero/todos.gleam) (server): typed `send_to_client` and `send_to_clients` push wrappers.
 - [`rpc_config.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_config.gleam): WebSocket URL configuration.
-- [`rpc_register.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_register.gleam) + [`rpc_register_ffi.mjs`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_register_ffi.mjs): auto-registers framework and application types for wire codec reconstruction (called automatically on first send).
+- [`rpc_decoders.gleam`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_decoders.gleam) + [`rpc_decoders_ffi.mjs`](https://github.com/pairshaped/libero/blob/master/examples/todos/client/src/client/generated/libero/rpc_decoders_ffi.mjs): typed decoders for every type reachable from `MsgFromClient`/`MsgFromServer`. Each decoder knows exactly which module's constructor to instantiate, eliminating the old global registry that collided variants sharing atom names across modules (e.g. `line_item.Paid` vs `order.Paid`). Primitives and combinators come from the static `libero/decoders_prelude.mjs`. See `docs/superpowers/specs/2026-04-17-typed-decoders-design.md` and the collision regression test at `test/libero/collision_regression_test.gleam`.
 
 ## How it works
 
 The wire format is ETF over binary WebSocket frames. Gleam's custom types, lists, options, and primitives all serialize automatically without explicit codecs.
 
-The client sends a `{module_path, MsgFromClient_value}` tuple. The server dispatch decodes it, routes by module path, and calls the handler. Codec registration happens automatically on the first `send_to_server` call.
+The client sends a `{module_path, MsgFromClient_value}` tuple. The server dispatch decodes it, routes by module path, and calls the handler. The generated `rpc_decoders_ffi.mjs` registers itself at module load time so push and response frames are decoded via the typed decoder path.
 
-The generator scans shared modules for `MsgFromClient` and `MsgFromServer` types, walks their type graphs to find all types that need codec registration, and emits the dispatch and stub files.
+The generator scans shared modules for `MsgFromClient` and `MsgFromServer` types, walks their type graphs, and emits the dispatch, stub, and typed decoder files.
 
 ## Naming
 
