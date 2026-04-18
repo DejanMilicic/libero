@@ -9,13 +9,12 @@ import core/shared_state.{type SharedState}
 import core/handler as core_handler_handler
 
 @external(erlang, "todos@generated@rpc_atoms", "ensure")
-fn ensure_atoms() -> Nil
+pub fn ensure_atoms() -> Nil
 
 pub fn handle(
   state state: SharedState,
   data data: BitArray,
 ) -> #(BitArray, Option(PanicInfo), SharedState) {
-  let Nil = ensure_atoms()
   case wire.decode_call(data) {
     Ok(#("core/messages", msg)) ->
       dispatch(state, fn() { core_handler_handler.update_from_client(msg: wire.coerce(msg), state:) })

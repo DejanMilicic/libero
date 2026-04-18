@@ -5,6 +5,7 @@ import gleam/erlang/process
 import gleam/http
 import gleam/http/request.{type Request}
 import gleam/http/response
+import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
 import libero/push
@@ -16,6 +17,7 @@ import core/shared_state
 
 pub fn main() {
   push.init()
+  dispatch.ensure_atoms()
   let state = shared_state.new()
   let logger = ws_logger.default_logger()
 
@@ -33,7 +35,6 @@ pub fn main() {
         _, ["web", ..path] ->
           serve_file(
             "clients/web/build/dev/javascript/" <> string.join(path, "/"),
-            "application/javascript",
           )
         _, _ -> serve_html("<!DOCTYPE html>
 <html>
@@ -99,15 +100,29 @@ fn serve_html(html: String) -> response.Response(mist.ResponseData) {
 
 fn serve_file(
   path: String,
-  content_type: String,
 ) -> response.Response(mist.ResponseData) {
   case mist.send_file(path, offset: 0, limit: None) {
     Ok(body) ->
       response.new(200)
-      |> response.set_header("content-type", content_type)
+      |> response.set_header("content-type", content_type(path))
       |> response.set_body(body)
     Error(_) ->
       response.new(404)
       |> response.set_body(mist.Bytes(bytes_tree.from_string("Not found")))
+  }
+}
+
+fn content_type(path: String) -> String {
+  case string.split(path, ".") |> list.last {
+    Ok("js") | Ok("mjs") -> "application/javascript"
+    Ok("css") -> "text/css"
+    Ok("html") -> "text/html"
+    Ok("json") -> "application/json"
+    Ok("wasm") -> "application/wasm"
+    Ok("svg") -> "image/svg+xml"
+    Ok("png") -> "image/png"
+    Ok("ico") -> "image/x-icon"
+    Ok("map") -> "application/json"
+    _ -> "application/octet-stream"
   }
 }
