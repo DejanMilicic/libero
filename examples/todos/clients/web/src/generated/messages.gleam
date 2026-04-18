@@ -4,14 +4,14 @@ import gleam/dynamic.{type Dynamic}
 import core/messages.{type MsgFromClient}
 import libero/rpc
 import generated/rpc_config
-import generated/rpc_register
+import generated/rpc_decoders
 import lustre/effect.{type Effect}
 
 pub fn send_to_server(
   msg msg: MsgFromClient,
   on_response on_response: fn(Dynamic) -> msg,
 ) -> Effect(msg) {
-  rpc_register.register_all()
+  let _ = rpc_decoders.decode_msg_from_server
   rpc.send(
     url: rpc_config.ws_url(),
     module: "core/messages",
@@ -23,7 +23,6 @@ pub fn send_to_server(
 pub fn update_from_server(
   handler handler: fn(Dynamic) -> msg,
 ) -> Effect(msg) {
-  rpc_register.register_all()
   rpc.update_from_server(
     module: "core/messages",
     handler: handler,

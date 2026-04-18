@@ -427,8 +427,6 @@ fn handler(
     mist.Text(_) -> mist.continue(state)
   }
 }
-
-}
 "
 
   ensure_parent_dir(path: gleam_output)
