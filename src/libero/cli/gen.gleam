@@ -218,6 +218,10 @@ fn run_client_codegen(
     }),
   )
 
+  // Clean up stale files from previous codegen versions
+  let _ = simplifile.delete(config.client_generated <> "/rpc_register.gleam")
+  let _ = simplifile.delete(config.client_generated <> "/rpc_register_ffi.mjs")
+
   // Client-side (unique per client)
   use _ <- result.try(
     codegen.write_send_functions(
