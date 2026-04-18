@@ -733,9 +733,9 @@ fn emit_decoder_imports(
     |> fn(pair) { pair.0 }
   let prelude_import =
     "import { decode_int, decode_float, decode_string, decode_bool, "
-    <> "decode_bit_array, decode_list_of, decode_option_of, decode_result_of, "
-    <> "decode_dict_of, decode_tuple_of, DecodeError, setMsgFromServerDecoder, "
-    <> "setResultCtors, setOptionCtors, setListCtors } from \""
+    <> "decode_bit_array, decode_nil, decode_list_of, decode_option_of, "
+    <> "decode_result_of, decode_dict_of, decode_tuple_of, DecodeError, "
+    <> "setMsgFromServerDecoder, setResultCtors, setOptionCtors, setListCtors } from \""
     <> config.decoders_prelude_import_path
     <> "\";"
   let prefix = config.register_relpath_prefix
@@ -887,6 +887,7 @@ fn field_decoder_call(
     walker.StringField -> "decode_string(" <> term_expr <> ")"
     walker.BoolField -> "decode_bool(" <> term_expr <> ")"
     walker.BitArrayField -> "decode_bit_array(" <> term_expr <> ")"
+    walker.NilField -> "decode_nil(" <> term_expr <> ")"
     walker.ListOf(inner) ->
       "decode_list_of((t) => "
       <> field_decoder_call(inner, "t", all)

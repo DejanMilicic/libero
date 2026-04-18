@@ -89,6 +89,13 @@ export const decode_bit_array = (term) => {
   return term;
 };
 
+export const decode_nil = (_term) => {
+  // Gleam `Nil` compiles to `undefined` on JS. Wire value is an empty
+  // tuple on Erlang; the raw decoder hands us back either `undefined` or
+  // `[]` depending on context. Either way, Nil has no runtime payload.
+  return undefined;
+};
+
 // --- Generic combinators ---
 
 export function decode_list_of(elementDecoder, term) {

@@ -26,6 +26,7 @@ pub type FieldType {
   StringField
   BoolField
   BitArrayField
+  NilField
   TypeVar(name: String)
 }
 
@@ -464,7 +465,7 @@ fn field_type_of(
         option.None, "String", [] -> StringField
         option.None, "Bool", [] -> BoolField
         option.None, "BitArray", [] -> BitArrayField
-        option.None, "Nil", [] -> TupleOf([])
+        option.None, "Nil", [] -> NilField
         // List
         option.None, "List", [elem] ->
           ListOf(field_type_of(t: elem, resolver:, current_module:))
