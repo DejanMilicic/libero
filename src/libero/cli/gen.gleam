@@ -69,21 +69,14 @@ fn run_with_clients(
 
   // 5. Validate conventions
   //
-  // shared_state and app_error can live in either the shared or server src.
-  // If both exist, the server copy takes precedence (matches how Gleam's
-  // within-package vs cross-package imports resolve).
-  let shared_state_path = case
-    simplifile.is_file(server_src <> "/shared_state.gleam")
-  {
-    Ok(True) -> server_src <> "/shared_state.gleam"
-    _ -> shared_src <> "/shared_state.gleam"
-  }
-  let app_error_path = case
-    simplifile.is_file(server_src <> "/app_error.gleam")
-  {
-    Ok(True) -> server_src <> "/app_error.gleam"
-    _ -> shared_src <> "/app_error.gleam"
-  }
+  // shared_state_module and app_error_module are Gleam module paths
+  // (e.g., "server/shared_state"). The file they resolve to depends on
+  // which package owns them - derive the file path from the module path
+  // by using the server_src dir as the package root.
+  let shared_state_path =
+    server_src <> "/" <> toml_cfg.shared_state_module <> ".gleam"
+  let app_error_path =
+    server_src <> "/" <> toml_cfg.app_error_module <> ".gleam"
 
   use message_modules <- result.try(
     scanner.validate_conventions(
