@@ -134,6 +134,16 @@ class ETFDecoder {
         return this.decodeAtom(this.readUint16());
       case 119:
         return this.decodeAtom(this.readUint8());
+      case 77: { // BIT_BINARY_EXT
+        const len = this.readUint32();
+        const bitsInLastByte = this.readUint8();
+        const bytes = this.readBytes(len);
+        const bitSize = len === 0 ? 0 : (len - 1) * 8 + bitsInLastByte;
+        // Standalone test: return a plain object { bytes, bitSize } since
+        // we don't import gleam_stdlib's BitArray here. Production code
+        // returns a real BitArray.
+        return { bytes, bitSize, _kind: "bit_binary" };
+      }
       default:
         throw new Error(`ETF decode: unknown tag ${tag} at offset ${this.offset - 1}`);
     }
@@ -141,6 +151,9 @@ class ETFDecoder {
 
   decodeAtom(len) {
     const name = this.readString(len);
+    if (Array.from(name).length >= 256) {
+      throw new Error(`ETF decode: atom name exceeds 255 codepoints`);
+    }
     if (name === "true") return true;
     if (name === "false") return false;
     if (name === "nil" || name === "undefined") return undefined;
@@ -880,8 +893,12 @@ test("FloatRegistry", "encoder uses registry for custom type float fields", () =
 console.log("\nEdge case tests:");
 
 test("Decode", "ATOM_UTF8_EXT (tag 118) long atom", () => {
-  const atomName = "a".repeat(300);
+  // Force tag 118 (uint16 byte length) by using multibyte chars: 100 emoji
+  // = 100 codepoints (under the 256 limit) but 400 bytes (over the 255
+  // single-byte length limit, so SMALL_ATOM_UTF8_EXT can't hold it).
+  const atomName = "🎯".repeat(100);
   const encoded = textEncoder.encode(atomName);
+  assert.ok(encoded.length > 255, "byte length should force tag 118");
   const buf = new ArrayBuffer(1 + 1 + 2 + encoded.length);
   const view = new DataView(buf);
   let off = 0;
@@ -1330,6 +1347,118 @@ test("RoundTrip", "LARGE_TUPLE_EXT (arity 256)", () => {
   assert.equal(result.length, 256);
   assert.equal(result[0], 0);
   assert.equal(result[255], 255);
+});
+
+// ============================================================
+// BIT_BINARY_EXT (tag 77) — non-byte-aligned binaries
+// ============================================================
+
+console.log("\nBIT_BINARY_EXT tests:");
+
+testDecode("BIT_BINARY_EXT: 13-bit binary (2 bytes, 5 bits in last)",
+  "<<5:13>>", r => {
+    assert.equal(r._kind, "bit_binary");
+    assert.equal(r.bitSize, 13);
+    assert.equal(r.bytes.length, 2);
+  });
+
+testDecode("BIT_BINARY_EXT: 1-bit binary (1 byte, 1 bit)",
+  "<<1:1>>", r => {
+    assert.equal(r._kind, "bit_binary");
+    assert.equal(r.bitSize, 1);
+    assert.equal(r.bytes.length, 1);
+  });
+
+testDecode("BIT_BINARY_EXT: 7-bit binary",
+  "<<127:7>>", r => {
+    assert.equal(r._kind, "bit_binary");
+    assert.equal(r.bitSize, 7);
+    assert.equal(r.bytes.length, 1);
+  });
+
+testDecode("BIT_BINARY_EXT: 17-bit binary (3 bytes, 1 bit in last)",
+  "<<65535:17>>", r => {
+    assert.equal(r._kind, "bit_binary");
+    assert.equal(r.bitSize, 17);
+    assert.equal(r.bytes.length, 3);
+  });
+
+// Byte-aligned bitarrays still come through BINARY_EXT (109), not BIT_BINARY_EXT
+testDecode("byte-aligned bitarray uses BINARY_EXT (sanity check)",
+  "<<255, 255>>", r => {
+    assert.equal(typeof r, "string"); // BINARY_EXT decodes as string in our codec
+  });
+
+// ============================================================
+// Atom length validation (255 codepoint hard limit)
+// ============================================================
+
+console.log("\nAtom length validation tests:");
+
+test("Decode", "atom at limit (255 codepoints) decodes ok", () => {
+  const atomName = "a".repeat(255);
+  const encoded = textEncoder.encode(atomName);
+  const buf = new ArrayBuffer(1 + 1 + 2 + encoded.length);
+  const view = new DataView(buf);
+  let off = 0;
+  view.setUint8(off++, 131);
+  view.setUint8(off++, 118); // ATOM_UTF8_EXT
+  view.setUint16(off, encoded.length); off += 2;
+  new Uint8Array(buf).set(encoded, off);
+
+  const decoder = new ETFDecoder(buf);
+  const result = decoder.decode();
+  assert.equal(result, atomName);
+});
+
+test("Decode", "atom over limit (256 codepoints) throws", () => {
+  const atomName = "a".repeat(256);
+  const encoded = textEncoder.encode(atomName);
+  const buf = new ArrayBuffer(1 + 1 + 2 + encoded.length);
+  const view = new DataView(buf);
+  let off = 0;
+  view.setUint8(off++, 131);
+  view.setUint8(off++, 118);
+  view.setUint16(off, encoded.length); off += 2;
+  new Uint8Array(buf).set(encoded, off);
+
+  const decoder = new ETFDecoder(buf);
+  assert.throws(() => decoder.decode(), /atom name exceeds 255 codepoints/);
+});
+
+test("Decode", "atom with multibyte codepoints validated by codepoint count, not bytes", () => {
+  // 200 emoji codepoints = 800 UTF-8 bytes (4 bytes per emoji), well under
+  // the 65535 byte limit but also under the 255 codepoint limit. Should pass.
+  const atomName = "🎯".repeat(200);
+  const encoded = textEncoder.encode(atomName);
+  const buf = new ArrayBuffer(1 + 1 + 2 + encoded.length);
+  const view = new DataView(buf);
+  let off = 0;
+  view.setUint8(off++, 131);
+  view.setUint8(off++, 118);
+  view.setUint16(off, encoded.length); off += 2;
+  new Uint8Array(buf).set(encoded, off);
+
+  const decoder = new ETFDecoder(buf);
+  const result = decoder.decode();
+  assert.equal(result, atomName);
+});
+
+test("Decode", "atom with multibyte codepoints over 255 throws", () => {
+  // 256 emoji codepoints = 1024 bytes, fits in uint16 byte length but over
+  // the 255 codepoint limit.
+  const atomName = "🎯".repeat(256);
+  const encoded = textEncoder.encode(atomName);
+  const buf = new ArrayBuffer(1 + 1 + 2 + encoded.length);
+  const view = new DataView(buf);
+  let off = 0;
+  view.setUint8(off++, 131);
+  view.setUint8(off++, 118);
+  view.setUint16(off, encoded.length); off += 2;
+  new Uint8Array(buf).set(encoded, off);
+
+  const decoder = new ETFDecoder(buf);
+  assert.throws(() => decoder.decode(), /atom name exceeds 255 codepoints/);
 });
 
 // ============================================================

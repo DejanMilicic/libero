@@ -60,6 +60,26 @@ function gleamListToArray(list) {
 }
 
 // ---------- ETF Decoder ----------
+//
+// Design note: no wrapper classes for atoms or tuples.
+//
+// A general-purpose ETF decoder (e.g. arnu515/erlang-etf.js) has to wrap
+// atoms in `Atom` and tuples in `Tuple` because, in raw JS, atoms collide
+// with binaries (both are strings) and tuples collide with lists (both
+// are arrays). Without wrappers, the consumer can't tell `:ok` from
+// `<<"ok">>` or `{1, 2}` from `[1, 2]`.
+//
+// Libero doesn't need wrappers because the typed decoder layer
+// (rpc_decoders_ffi.mjs, generated per consumer) knows the expected
+// shape from the Gleam type graph. When raw mode hands back
+// `["some", 42]`, the typed decoder sees an `Option(Int)` field at that
+// position and constructs `_Some(42)`. Same for atoms-vs-binaries: the
+// type tells the decoder which one to expect.
+//
+// Adding wrapper classes here would just be one more layer the typed
+// decoder unwraps. The cost is that raw mode is ambiguous on its own —
+// fine for libero, but the reason a future standalone ETF library
+// (split from this codec) would need wrappers.
 
 const utf8Decoder = new TextDecoder();
 
@@ -193,6 +213,18 @@ class ETFDecoder {
       case 119: // SMALL_ATOM_UTF8_EXT
         return this.decodeAtom(this.readUint8());
 
+      case 77: { // BIT_BINARY_EXT (non-byte-aligned binary)
+        // len bytes, then 1 byte for "bits in last byte" (1-8).
+        // The last byte's high `bits` bits are meaningful; low `8 - bits`
+        // bits are padding. A Gleam BitArray represents this natively
+        // via bitSize, so no separate wrapper is needed.
+        const len = this.readUint32();
+        const bitsInLastByte = this.readUint8();
+        const bytes = this.readBytes(len);
+        const bitSize = len === 0 ? 0 : (len - 1) * 8 + bitsInLastByte;
+        return new BitArray(bytes, bitSize, 0);
+      }
+
       default:
         throw new Error(`ETF decode: unknown tag ${tag} at offset ${this.offset - 1}`);
     }
@@ -200,6 +232,12 @@ class ETFDecoder {
 
   decodeAtom(len) {
     const name = this.readString(len);
+    // Erlang's hard limit is 255 codepoints (not bytes). UTF-8 codepoints
+    // are 1-4 bytes, so a byte length under 256 can still produce <= 255
+    // codepoints — but ATOM_UTF8_EXT (uint16 length) can exceed this.
+    if (Array.from(name).length >= 256) {
+      throw new Error(`ETF decode: atom name exceeds 255 codepoints`);
+    }
     // Special atoms
     if (name === "true") return true;
     if (name === "false") return false;
