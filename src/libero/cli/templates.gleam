@@ -5,8 +5,7 @@
 
 /// Returns gleam.toml content for a new project (the server package).
 /// Libero config lives under the [libero] section.
-/// `libero_path` is the relative path to the libero package.
-pub fn gleam_toml(name name: String, libero_path libero_path: String) -> String {
+pub fn gleam_toml(name name: String) -> String {
   "name = \""
   <> name
   <> "\"
@@ -20,9 +19,7 @@ gleam_http = \"~> 4.0\"
 mist = \"~> 6.0\"
 lustre = \"~> 5.6\"
 shared = { path = \"shared\" }
-libero = { path = \""
-  <> libero_path
-  <> "\" }
+libero = \"~> 4.0\"
 
 [dev-dependencies]
 gleeunit = \"~> 1.0\"
@@ -35,7 +32,7 @@ port = 8080
 /// Returns gleam.toml content for the shared package.
 /// Target-agnostic so both the Erlang server and JS clients can import
 /// messages and types from it.
-pub fn shared_gleam_toml(libero_path libero_path: String) -> String {
+pub fn shared_gleam_toml() -> String {
   "name = \"shared\"
 version = \"0.1.0\"
 
@@ -43,9 +40,7 @@ version = \"0.1.0\"
 
 [dependencies]
 gleam_stdlib = \">= 0.69.0 and < 1.0.0\"
-libero = { path = \""
-  <> libero_path
-  <> "\" }
+libero = \"~> 4.0\"
 
 [dev-dependencies]
 gleeunit = \"~> 1.0\"
@@ -152,12 +147,10 @@ fn view() -> element.Element(msg) {
 }
 
 /// Returns a gleam.toml for a client package.
-/// `libero_path` is the relative path from the client dir to the libero package.
 pub fn client_gleam_toml(
   name name: String,
   target target: String,
   root_package root_package: String,
-  libero_path libero_path: String,
 ) -> String {
   "name = \""
   <> name
@@ -173,9 +166,7 @@ shared = { path = \"../../shared\" }
 "
   <> root_package
   <> " = { path = \"../../\" }
-libero = { path = \""
-  <> libero_path
-  <> "\" }
+libero = \"~> 4.0\"
 "
   <> case target {
     "javascript" -> "lustre = \"~> 5.6\"\n"

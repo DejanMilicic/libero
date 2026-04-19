@@ -88,11 +88,9 @@ fn scaffold_files(
   server_dir server_dir: String,
 ) -> Result(Nil, String) {
   use _ <- map_err(simplifile.create_directory_all(server_dir))
-  // TODO: detect libero path from current project or use hex version once published
-  let libero_path = "../libero"
 
   // Root (server) package
-  use _ <- map_err(simplifile.write(path <> "/gleam.toml", templates.gleam_toml(name:, libero_path:)))
+  use _ <- map_err(simplifile.write(path <> "/gleam.toml", templates.gleam_toml(name:)))
   use _ <- map_err(simplifile.write(server_dir <> "/handler.gleam", templates.starter_handler()))
   use _ <- map_err(simplifile.write(server_dir <> "/shared_state.gleam", templates.starter_shared_state()))
   use _ <- map_err(simplifile.write(server_dir <> "/app_error.gleam", templates.starter_app_error()))
@@ -100,9 +98,8 @@ fn scaffold_files(
   // Shared package - messages live here so JS clients can import them
   // without pulling in Erlang-only server dependencies.
   let shared_dir = path <> "/shared/src/shared"
-  let shared_libero_path = "../" <> libero_path
   use _ <- map_err(simplifile.create_directory_all(shared_dir))
-  use _ <- map_err(simplifile.write(path <> "/shared/gleam.toml", templates.shared_gleam_toml(libero_path: shared_libero_path)))
+  use _ <- map_err(simplifile.write(path <> "/shared/gleam.toml", templates.shared_gleam_toml()))
   use _ <- map_err(simplifile.write(shared_dir <> "/messages.gleam", templates.starter_messages()))
 
   let test_dir = path <> "/test"
