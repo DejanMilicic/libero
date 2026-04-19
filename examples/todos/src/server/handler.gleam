@@ -1,11 +1,11 @@
+import ets_store
 import server/app_error.{type AppError}
+import server/shared_state.{type SharedState}
 import shared/messages.{
   type MsgFromClient, type MsgFromServer, Create, Delete, LoadAll, NotFound,
   TitleRequired, Todo, TodoCreated, TodoDeleted, TodoToggled, TodosLoaded,
   Toggle,
 }
-import server/shared_state.{type SharedState}
-import ets_store
 
 /// Handle RPC messages from clients.
 pub fn update_from_client(

@@ -1,17 +1,17 @@
+import generated/messages as rpc
 import gleam/dynamic
 import gleam/list
 import libero/wire
-import shared/messages.{
-  type MsgFromServer, type Todo, Create, Delete, LoadAll, TodoCreated,
-  TodoDeleted, TodoParams, TodoToggled, TodosLoaded, Toggle,
-}
-import generated/messages as rpc
 import lustre
 import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
+import shared/messages.{
+  type MsgFromServer, type Todo, Create, Delete, LoadAll, TodoCreated,
+  TodoDeleted, TodoParams, TodoToggled, TodosLoaded, Toggle,
+}
 
 // --- Model ---
 
@@ -37,7 +37,10 @@ pub type Msg {
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    UserTyped(value:) -> #(Model(..model, input: value, error: ""), effect.none())
+    UserTyped(value:) -> #(
+      Model(..model, input: value, error: ""),
+      effect.none(),
+    )
     UserSubmitted ->
       case model.input {
         "" -> #(Model(..model, error: "Title is required"), effect.none())
@@ -92,10 +95,7 @@ fn handle_server_response(
       effect.none(),
     )
     TodoDeleted(Ok(id)) -> #(
-      Model(
-        ..model,
-        todos: list.filter(model.todos, fn(t) { t.id != id }),
-      ),
+      Model(..model, todos: list.filter(model.todos, fn(t) { t.id != id })),
       effect.none(),
     )
     TodoDeleted(Error(_)) -> #(
@@ -118,18 +118,19 @@ fn load_all() -> Effect(Msg) {
 
 fn view(model: Model) -> Element(Msg) {
   html.div(
-    [attribute.styles([
-      #("max-width", "500px"),
-      #("margin", "2rem auto"),
-      #("font-family", "system-ui, sans-serif"),
-    ])],
+    [
+      attribute.styles([
+        #("max-width", "500px"),
+        #("margin", "2rem auto"),
+        #("font-family", "system-ui, sans-serif"),
+      ]),
+    ],
     [
       html.h1([], [html.text("Todos")]),
       view_form(model),
       case model.error {
         "" -> element.none()
-        err ->
-          html.p([attribute.style("color", "red")], [html.text(err)])
+        err -> html.p([attribute.style("color", "red")], [html.text(err)])
       },
       view_todo_list(model.todos),
     ],
@@ -175,13 +176,15 @@ fn view_todo_list(todos: List(Todo)) -> Element(Msg) {
 
 fn view_todo_item(item: Todo) -> Element(Msg) {
   html.li(
-    [attribute.styles([
-      #("display", "flex"),
-      #("align-items", "center"),
-      #("gap", "0.5rem"),
-      #("padding", "0.5rem 0"),
-      #("border-bottom", "1px solid #eee"),
-    ])],
+    [
+      attribute.styles([
+        #("display", "flex"),
+        #("align-items", "center"),
+        #("gap", "0.5rem"),
+        #("padding", "0.5rem 0"),
+        #("border-bottom", "1px solid #eee"),
+      ]),
+    ],
     [
       html.input([
         attribute.type_("checkbox"),
@@ -189,17 +192,19 @@ fn view_todo_item(item: Todo) -> Element(Msg) {
         event.on_check(fn(_) { UserToggled(item.id) }),
       ]),
       html.span(
-        [attribute.styles([
-          #("flex", "1"),
-          #("text-decoration", case item.completed {
-            True -> "line-through"
-            False -> "none"
-          }),
-          #("opacity", case item.completed {
-            True -> "0.5"
-            False -> "1"
-          }),
-        ])],
+        [
+          attribute.styles([
+            #("flex", "1"),
+            #("text-decoration", case item.completed {
+              True -> "line-through"
+              False -> "none"
+            }),
+            #("opacity", case item.completed {
+              True -> "0.5"
+              False -> "1"
+            }),
+          ]),
+        ],
         [html.text(item.title)],
       ),
       html.button(

@@ -34,12 +34,7 @@ pub fn call_returns_decoded_payload_test() {
     #(response, None, Nil)
   }
   let result =
-    ssr.call(
-      handle: handler,
-      state: Nil,
-      module: "test",
-      msg: "ping",
-    )
+    ssr.call(handle: handler, state: Nil, module: "test", msg: "ping")
   let assert Ok("pong") = result
 }
 
@@ -50,26 +45,14 @@ pub fn call_returns_dispatch_error_on_error_response_test() {
     #(response, None, Nil)
   }
   let result: Result(String, ssr.SsrError) =
-    ssr.call(
-      handle: handler,
-      state: Nil,
-      module: "test",
-      msg: "ping",
-    )
+    ssr.call(handle: handler, state: Nil, module: "test", msg: "ping")
   let assert Error(ssr.DispatchError) = result
 }
 
 pub fn call_returns_bad_response_on_empty_bytes_test() {
-  let handler = fn(_state: Nil, _data: BitArray) {
-    #(<<>>, None, Nil)
-  }
+  let handler = fn(_state: Nil, _data: BitArray) { #(<<>>, None, Nil) }
   let result: Result(String, ssr.SsrError) =
-    ssr.call(
-      handle: handler,
-      state: Nil,
-      module: "test",
-      msg: "ping",
-    )
+    ssr.call(handle: handler, state: Nil, module: "test", msg: "ping")
   let assert Error(ssr.BadResponse) = result
 }
 

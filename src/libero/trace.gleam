@@ -39,6 +39,6 @@ pub fn new_trace_id() -> String {
 // dependency. Consumers decide what to do with panic info in their
 // WebSocket handler, not in library code.
 
-@external(erlang, "libero_ffi", "try_call")
 // nolint: stringly_typed_error
+@external(erlang, "libero_ffi", "try_call")
 fn do_try_call(action: fn() -> a) -> Result(a, String)

@@ -62,7 +62,8 @@ pub fn add_skips_existing_app_test() {
   let client_src = dir <> "/clients/web/src"
   let assert Ok(Nil) = simplifile.create_directory_all(client_src)
   let custom_content = "// custom content, do not overwrite"
-  let assert Ok(Nil) = simplifile.write(client_src <> "/app.gleam", custom_content)
+  let assert Ok(Nil) =
+    simplifile.write(client_src <> "/app.gleam", custom_content)
 
   let assert Ok(Nil) =
     cli_add.add_client(project_path: dir, name: "web", target: "javascript")

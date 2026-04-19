@@ -10,8 +10,7 @@ pub fn map_success_test() {
 
 pub fn map_failure_test() {
   let data: remote_data.RemoteData(Int, String) = Failure("err")
-  let assert Failure("err") =
-    remote_data.map(data:, transform: fn(x) { x * 2 })
+  let assert Failure("err") = remote_data.map(data:, transform: fn(x) { x * 2 })
 }
 
 pub fn map_loading_test() {

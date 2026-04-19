@@ -156,9 +156,7 @@ pub fn walk_message_registry_types(
   )
 }
 
-fn do_walk(
-  state: WalkerState,
-) -> Result(List(DiscoveredType), List(GenError)) {
+fn do_walk(state: WalkerState) -> Result(List(DiscoveredType), List(GenError)) {
   case state.queue {
     [] ->
       case state.errors {
@@ -258,7 +256,11 @@ fn process_type_ast(
                 glance.LabelledVariantField(item:, ..) -> item
                 glance.UnlabelledVariantField(item:) -> item
               }
-              field_type_of(t: field_type, resolver:, current_module: module_path)
+              field_type_of(
+                t: field_type,
+                resolver:,
+                current_module: module_path,
+              )
             })
           let disc_item =
             DiscoveredVariant(
@@ -456,16 +458,19 @@ fn field_type_of(
   case t {
     glance.VariableType(name:, ..) -> TypeVar(name:)
     glance.TupleType(elements:, ..) ->
-      TupleOf(list.map(elements, fn(e) {
-        field_type_of(t: e, resolver:, current_module:)
-      }))
+      TupleOf(
+        list.map(elements, fn(e) {
+          field_type_of(t: e, resolver:, current_module:)
+        }),
+      )
     glance.FunctionType(..) -> TypeVar(name: "_fn")
     glance.HoleType(..) -> TypeVar(name: "_")
     glance.NamedType(name:, module:, parameters:, ..) ->
       case module, name, parameters {
         // Primitives (unqualified or gleam-qualified)
         option.None, "Int", [] | option.Some("gleam"), "Int", [] -> IntField
-        option.None, "Float", [] | option.Some("gleam"), "Float", [] -> FloatField
+        option.None, "Float", [] | option.Some("gleam"), "Float", [] ->
+          FloatField
         option.None, "String", [] | option.Some("gleam"), "String", [] ->
           StringField
         option.None, "Bool", [] | option.Some("gleam"), "Bool", [] -> BoolField
@@ -473,15 +478,12 @@ fn field_type_of(
           BitArrayField
         option.None, "Nil", [] | option.Some("gleam"), "Nil", [] -> NilField
         // List (unqualified or qualified)
-        option.None, "List", [elem]
-        | option.Some("gleam"), "List", [elem]
-        ->
+        option.None, "List", [elem] | option.Some("gleam"), "List", [elem] ->
           ListOf(field_type_of(t: elem, resolver:, current_module:))
         // Option (unqualified or qualified as option.Option)
         option.None, "Option", [inner]
         | option.Some("option"), "Option", [inner]
-        ->
-          OptionOf(field_type_of(t: inner, resolver:, current_module:))
+        -> OptionOf(field_type_of(t: inner, resolver:, current_module:))
         // Result (unqualified or qualified as result.Result)
         option.None, "Result", [ok, err]
         | option.Some("result"), "Result", [ok, err]

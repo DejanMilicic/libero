@@ -6,9 +6,7 @@
 /// Returns gleam.toml content for a new project (the server package).
 /// Libero config lives under the [libero] section.
 pub fn gleam_toml(name name: String) -> String {
-  "name = \""
-  <> name
-  <> "\"
+  "name = \"" <> name <> "\"
 version = \"0.1.0\"
 target = \"erlang\"
 
@@ -137,9 +135,7 @@ pub fn main() {
 
 fn view() -> element.Element(msg) {
   html.div([], [
-    html.h1([], [html.text(\""
-  <> name
-  <> "\")]),
+    html.h1([], [html.text(\"" <> name <> "\")]),
     html.p([], [html.text(\"Edit this file to get started.\")]),
   ])
 }
@@ -152,23 +148,16 @@ pub fn client_gleam_toml(
   target target: String,
   root_package root_package: String,
 ) -> String {
-  "name = \""
-  <> name
-  <> "\"
+  "name = \"" <> name <> "\"
 version = \"0.1.0\"
-target = \""
-  <> target
-  <> "\"
+target = \"" <> target <> "\"
 
 [dependencies]
 gleam_stdlib = \">= 0.69.0 and < 1.0.0\"
 shared = { path = \"../../shared\" }
-"
-  <> root_package
-  <> " = { path = \"../../\" }
+" <> root_package <> " = { path = \"../../\" }
 libero = \"~> 4.0\"
-"
-  <> case target {
+" <> case target {
     "javascript" -> "lustre = \"~> 5.6\"\n"
     _ -> ""
   }

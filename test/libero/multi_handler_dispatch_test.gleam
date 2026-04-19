@@ -26,9 +26,15 @@ pub fn multi_handler_dispatch_chains_test() {
 
   // Must import both handler modules
   let assert True =
-    string.contains(content, "import server/handler_a as server_handler_a_handler")
+    string.contains(
+      content,
+      "import server/handler_a as server_handler_a_handler",
+    )
   let assert True =
-    string.contains(content, "import server/handler_b as server_handler_b_handler")
+    string.contains(
+      content,
+      "import server/handler_b as server_handler_b_handler",
+    )
 
   // Must import the message module for typed_msg annotation
   let assert True =
@@ -53,7 +59,10 @@ pub fn multi_handler_dispatch_chains_test() {
 
   // Must chain to handler_b on UnhandledMessage
   let assert True =
-    string.contains(content, "Error(UnhandledMessage) -> server_handler_b_handler.update_from_client")
+    string.contains(
+      content,
+      "Error(UnhandledMessage) -> server_handler_b_handler.update_from_client",
+    )
 
   // Cleanup
   let assert Ok(Nil) = simplifile.delete_all([output_dir])

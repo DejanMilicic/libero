@@ -151,8 +151,7 @@ pub fn roundtrip_nested_label_with_values_test() {
 // ============================================================================
 
 pub fn roundtrip_profile_with_nickname_test() {
-  let result: Profile =
-    unsafe_coerce(roundtrip(Profile("Alice", Some("Ali"))))
+  let result: Profile = unsafe_coerce(roundtrip(Profile("Alice", Some("Ali"))))
   let assert Profile(name: "Alice", nickname: Some("Ali")) = result
 }
 

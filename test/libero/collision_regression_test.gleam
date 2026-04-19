@@ -15,8 +15,7 @@ pub fn collision_produces_distinct_decoders_test() {
     )
 
   // Both a.Status and b.Status must appear in the discovered graph.
-  let names =
-    list.map(types, fn(t) { t.module_path <> "." <> t.type_name })
+  let names = list.map(types, fn(t) { t.module_path <> "." <> t.type_name })
   let assert True = list.contains(names, "shared/a.Status")
   let assert True = list.contains(names, "shared/b.Status")
 

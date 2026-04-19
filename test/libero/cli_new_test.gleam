@@ -19,11 +19,14 @@ pub fn scaffold_project_test() {
   let assert True = string.contains(gleam_toml, "shared = { path = \"shared\"")
 
   let assert Ok(True) = simplifile.is_file(dir <> "/shared/gleam.toml")
-  let assert Ok(True) = simplifile.is_file(dir <> "/shared/src/shared/messages.gleam")
+  let assert Ok(True) =
+    simplifile.is_file(dir <> "/shared/src/shared/messages.gleam")
   let assert Ok(True) = simplifile.is_file(dir <> "/src/server/handler.gleam")
-  let assert Ok(True) = simplifile.is_file(dir <> "/src/server/shared_state.gleam")
+  let assert Ok(True) =
+    simplifile.is_file(dir <> "/src/server/shared_state.gleam")
   let assert Ok(True) = simplifile.is_file(dir <> "/src/server/app_error.gleam")
-  let assert Ok(True) = simplifile.is_file(dir <> "/test/test_scaffold_test.gleam")
+  let assert Ok(True) =
+    simplifile.is_file(dir <> "/test/test_scaffold_test.gleam")
 
   let _ = simplifile.delete("build/.test_cli_new")
   Nil

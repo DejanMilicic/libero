@@ -163,9 +163,11 @@ fn run_client_codegen(
   io.println("libero: generating stubs for client: " <> client.name)
 
   // Convert TomlConfig to codegen Config for this client
-  use config <- result.try(
-    toml_config.to_codegen_config(toml_cfg:, client: client.name, ws_path: "/ws"),
-  )
+  use config <- result.try(toml_config.to_codegen_config(
+    toml_cfg:,
+    client: client.name,
+    ws_path: "/ws",
+  ))
 
   // Ensure generated directories exist
   let server_generated = project_path <> "/" <> config.server_generated

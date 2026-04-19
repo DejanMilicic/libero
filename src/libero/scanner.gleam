@@ -333,7 +333,6 @@ pub fn validate_conventions(
   shared_state_path shared_state_path: String,
   app_error_path app_error_path: String,
 ) -> Result(List(MessageModule), List(GenError)) {
-
   let shared_state_errors = case
     simplifile.is_file(shared_state_path) |> result.unwrap(or: False)
   {

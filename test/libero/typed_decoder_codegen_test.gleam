@@ -60,11 +60,13 @@ fn sample_msg_from_server() -> List(walker.DiscoveredType) {
           atom_name: "items_loaded",
           float_field_indices: [],
           fields: [
-            walker.ListOf(walker.UserType(
-              module_path: "shared/item",
-              type_name: "Item",
-              args: [],
-            )),
+            walker.ListOf(
+              walker.UserType(
+                module_path: "shared/item",
+                type_name: "Item",
+                args: [],
+              ),
+            ),
           ],
         ),
         walker.DiscoveredVariant(
@@ -124,8 +126,7 @@ pub fn record_decoder_calls_primitive_decoders_test() {
 
 pub fn record_decoder_constructs_correct_variant_test() {
   let js = codegen.emit_typed_decoders(sample_record_type())
-  let assert True =
-    string.contains(js, "return new _m_shared_todo.Todo(")
+  let assert True = string.contains(js, "return new _m_shared_todo.Todo(")
 }
 
 pub fn msg_from_server_decoder_is_exported_test() {
@@ -186,10 +187,7 @@ pub fn result_field_uses_result_decoder_test() {
           atom_name: "wrapper",
           float_field_indices: [],
           fields: [
-            walker.ResultOf(
-              ok: walker.StringField,
-              err: walker.IntField,
-            ),
+            walker.ResultOf(ok: walker.StringField, err: walker.IntField),
           ],
         ),
       ],

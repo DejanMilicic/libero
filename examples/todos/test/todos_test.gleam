@@ -1,11 +1,11 @@
 import gleam/list
-import server/handler
-import shared/messages.{
-  Create, Delete, LoadAll, Todo, TodoCreated, TodoDeleted, TodoToggled,
-  TodoParams, TodosLoaded, Toggle,
-}
-import server/shared_state
 import gleeunit
+import server/handler
+import server/shared_state
+import shared/messages.{
+  Create, Delete, LoadAll, Todo, TodoCreated, TodoDeleted, TodoParams,
+  TodoToggled, TodosLoaded, Toggle,
+}
 
 pub fn main() {
   gleeunit.main()
@@ -26,7 +26,10 @@ pub fn create_with_empty_title_returns_error_test() {
 
 pub fn create_returns_todo_with_id_test() {
   let state = fresh_state()
-  let assert Ok(#(TodoCreated(Ok(Todo(id: _, title: "Buy milk", completed: False))), _)) =
+  let assert Ok(#(
+    TodoCreated(Ok(Todo(id: _, title: "Buy milk", completed: False))),
+    _,
+  )) =
     handler.update_from_client(
       msg: Create(params: TodoParams(title: "Buy milk")),
       state:,

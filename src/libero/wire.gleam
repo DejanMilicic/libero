@@ -96,8 +96,8 @@ pub fn decode_call(data: BitArray) -> Result(#(String, Dynamic), DecodeError) {
   ffi_decode_call(data)
 }
 
-@external(erlang, "libero_wire_ffi", "decode_call")
 // nolint: avoid_panic, discarded_result -- Erlang-only @external; JS fallback is unreachable
+@external(erlang, "libero_wire_ffi", "decode_call")
 fn ffi_decode_call(data: BitArray) -> Result(#(String, Dynamic), DecodeError) {
   let _ = data
   panic as "libero/wire.decode_call is a server-side function, unreachable on JavaScript target"

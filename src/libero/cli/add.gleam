@@ -28,11 +28,7 @@ pub fn add_client(
   use root_name <- try_read_root_name(path)
   use _ <- write_if_missing(
     client_toml_path,
-    templates.client_gleam_toml(
-      name:,
-      target:,
-      root_package: root_name,
-    ),
+    templates.client_gleam_toml(name:, target:, root_package: root_name),
   )
 
   // Generate starter app if src is empty
@@ -52,7 +48,8 @@ pub fn add_client(
   use toml_content <- map_err(simplifile.read(path <> "/gleam.toml"))
   let already_declared = case toml_config.parse(toml_content) {
     Ok(cfg) -> list.any(cfg.clients, fn(c) { c.name == name })
-    Error(_) -> False // nolint: thrown_away_error -- unparseable toml treated as "not declared"
+    Error(_) -> False
+    // nolint: thrown_away_error -- unparseable toml treated as "not declared"
   }
   case already_declared {
     True -> Ok(Nil)

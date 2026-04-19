@@ -11,7 +11,8 @@ fn receive_push(timeout: Int) -> Result(BitArray, Nil) {
       tag: atom.create("libero_push"),
       fields: 1,
       mapping: fn(record) {
-        { use frame <- decode.field(1, decode.bit_array)
+        {
+          use frame <- decode.field(1, decode.bit_array)
           decode.success(frame)
         }
         |> decode.run(record, _)

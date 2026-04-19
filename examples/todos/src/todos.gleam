@@ -24,19 +24,15 @@ pub fn main() {
   let assert Ok(_) =
     fn(req: Request(Connection)) {
       case req.method, request.path_segments(req) {
-        _, ["ws"] ->
-          ws.upgrade(
-            request: req,
-            state:,
-            topics: [],
-            logger:,
-          )
+        _, ["ws"] -> ws.upgrade(request: req, state:, topics: [], logger:)
         http.Post, ["rpc"] -> handle_rpc(req, state, logger)
         _, ["web", ..path] ->
           serve_file(
             "clients/web/build/dev/javascript/" <> string.join(path, "/"),
           )
-        _, _ -> serve_html("<!DOCTYPE html>
+        _, _ ->
+          serve_html(
+            "<!DOCTYPE html>
 <html>
 <head>
   <meta charset=\"utf-8\">
@@ -49,7 +45,8 @@ pub fn main() {
     main();
   </script>
 </body>
-</html>")
+</html>",
+          )
       }
     }
     |> mist.new
@@ -84,7 +81,9 @@ fn handle_rpc(
       }
       response.new(200)
       |> response.set_header("content-type", "application/octet-stream")
-      |> response.set_body(mist.Bytes(bytes_tree.from_bit_array(response_bytes)))
+      |> response.set_body(
+        mist.Bytes(bytes_tree.from_bit_array(response_bytes)),
+      )
     }
     Error(_) ->
       response.new(400)
@@ -98,9 +97,7 @@ fn serve_html(html: String) -> response.Response(mist.ResponseData) {
   |> response.set_body(mist.Bytes(bytes_tree.from_string(html)))
 }
 
-fn serve_file(
-  path: String,
-) -> response.Response(mist.ResponseData) {
+fn serve_file(path: String) -> response.Response(mist.ResponseData) {
   case mist.send_file(path, offset: 0, limit: None) {
     Ok(body) ->
       response.new(200)

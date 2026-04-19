@@ -63,8 +63,7 @@ pub fn parse(input: String) -> Result(TomlConfig, String) {
     |> result.map_error(fn(_) { "missing required field: name" }),
   )
 
-  let port =
-    tom.get_int(parsed, ["libero", "port"]) |> result.unwrap(8080)
+  let port = tom.get_int(parsed, ["libero", "port"]) |> result.unwrap(8080)
 
   let rest =
     tom.get_bool(parsed, ["libero", "server", "rest"]) |> result.unwrap(False)
@@ -128,7 +127,8 @@ pub fn to_codegen_config(
   let app = toml_cfg.name
   let client_generated = "clients/" <> client.name <> "/src/generated"
   let server_generated = toml_cfg.server_generated_dir
-  let atoms_module = string.replace(app, each: "-", with: "_") <> "@generated@rpc_atoms"
+  let atoms_module =
+    string.replace(app, each: "-", with: "_") <> "@generated@rpc_atoms"
   let atoms_output = toml_cfg.server_atoms_path
   let config_output = client_generated <> "/rpc_config.gleam"
   // The FFI file at `clients/<name>/src/generated/rpc_decoders_ffi.mjs` is
@@ -173,15 +173,11 @@ fn parse_clients(
       list.try_map(names, fn(name) {
         use client_table <- result.try(
           tom.get_table(clients_dict, [name])
-          |> result.map_error(fn(_) {
-            "invalid clients." <> name <> " section"
-          }),
+          |> result.map_error(fn(_) { "invalid clients." <> name <> " section" }),
         )
         use target <- result.try(
           tom.get_string(client_table, ["target"])
-          |> result.map_error(fn(_) {
-            "missing target in clients." <> name
-          }),
+          |> result.map_error(fn(_) { "missing target in clients." <> name }),
         )
         Ok(ClientConfig(name: name, target: target))
       })

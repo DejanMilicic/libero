@@ -57,7 +57,9 @@ pub fn main() -> Nil {
       io.println("  new <name>                    Create a new project")
       io.println("  add <name> --target <target>  Add a client")
       io.println("  gen                           Regenerate stubs")
-      io.println("  build                         Gen + build server + all clients")
+      io.println(
+        "  build                         Gen + build server + all clients",
+      )
       Nil
     }
   }
