@@ -200,7 +200,7 @@ Topics are set during WebSocket upgrade (in the generated server entry point).
 
 ## Server-Side Rendering (SSR)
 
-Libero supports SSR + client hydration. The server renders a Lustre view to HTML, embeds state as flags, and the client hydrates without a visible re-render. After hydration, the app uses normal WebSocket RPC.
+SSR lets the server pre-render the initial page HTML with real data so the browser displays content immediately — no loading spinner, no blank page while JavaScript boots. The client then hydrates the pre-rendered DOM (attaches event handlers, connects WebSocket) and takes over as a normal SPA. Users see content faster, and search engines see fully rendered pages.
 
 The `libero/ssr` module provides four functions:
 
