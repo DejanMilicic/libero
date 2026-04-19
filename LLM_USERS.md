@@ -198,6 +198,84 @@ messages_push.send_to_client(client_id: "user:42", msg: TodoCreated(Ok(item)))
 
 Topics are set during WebSocket upgrade (in the generated server entry point).
 
+## Server-Side Rendering (SSR)
+
+Libero supports SSR + client hydration. The server renders a Lustre view to HTML, embeds state as flags, and the client hydrates without a visible re-render. After hydration, the app uses normal WebSocket RPC.
+
+The `libero/ssr` module provides four functions:
+
+### `ssr.call` -- fetch data on the server
+
+Calls `dispatch.handle` directly (no network) to fetch data for rendering. The `expect` parameter unwraps the `MsgFromServer` response into the value you need (like Elm's `Http.expect`):
+
+```gleam
+import libero/ssr
+import shared/messages.{CounterUpdated, GetCounter}
+
+let assert Ok(counter) =
+  ssr.call(
+    handle: dispatch.handle,
+    state:,
+    module: "shared/messages",
+    msg: GetCounter,
+    expect: fn(resp) {
+      let assert CounterUpdated(Ok(n)) = resp
+      n
+    },
+  )
+// counter: Int
+```
+
+The `expect` function receives the `MsgFromServer` variant and extracts the payload. Without it, the caller would get the full envelope (e.g. `CounterUpdated(Ok(0))`) instead of the inner value, which compiles but crashes at runtime due to type coercion in the wire layer.
+
+### `ssr.encode_flags` / `ssr.decode_flags` -- pass state to client
+
+Server encodes a value as base64 ETF. Client decodes it in `init`:
+
+```gleam
+// Server: encode for embedding in HTML
+let flags = ssr.encode_flags(counter)
+
+// Client: decode in Lustre init
+fn init(flags: Dynamic) -> #(Model, Effect(Msg)) {
+  let counter = case ssr.decode_flags(flags) {
+    Ok(n) -> n
+    Error(_) -> 0
+  }
+  // ...
+}
+```
+
+The flags are embedded as `window.__LIBERO_FLAGS__` by `ssr.document`. The generated `ssr.read_flags()` (in `clients/<name>/src/generated/ssr.gleam`) reads them from the DOM.
+
+### `ssr.document` -- render the full HTML page
+
+Wraps pre-rendered HTML, flags, and a client module import into a complete document:
+
+```gleam
+let body = element.to_string(views.view(model))
+let flags = ssr.encode_flags(counter)
+let html =
+  ssr.document(
+    title: "My App",
+    body:,
+    flags:,
+    client_module: "/web/web/app.mjs",
+  )
+```
+
+### SSR project structure
+
+For SSR, view functions must live in `shared/` so they compile to both Erlang (server rendering) and JavaScript (client hydration). The `shared/` package needs a `lustre` dependency.
+
+```
+shared/src/shared/
+  messages.gleam     # MsgFromClient, MsgFromServer (same as non-SSR)
+  views.gleam        # view functions, Model, Msg, Route types
+```
+
+The server entry point (`src/<app>.gleam`) is generated once and never overwritten, so it can be customized to add SSR routes. See `examples/counter/` for a working example.
+
 ## What Gets Generated
 
 **Server dispatch (`src/server/generated/`):**
