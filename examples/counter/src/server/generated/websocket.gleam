@@ -48,7 +48,10 @@ pub fn upgrade(
 }
 
 fn on_init(state: SharedState, topics: List(String), logger: Logger) {
-  fn(_conn: mist.WebsocketConnection) -> #(ConnState, Option(process.Selector(PushMsg))) {
+  fn(_conn: mist.WebsocketConnection) -> #(
+    ConnState,
+    Option(process.Selector(PushMsg)),
+  ) {
     logger.debug("WebSocket: connected")
     list.each(topics, fn(t) { push.join(topic: t) })
     let selector =
@@ -57,7 +60,8 @@ fn on_init(state: SharedState, topics: List(String), logger: Logger) {
         tag: atom.create("libero_push"),
         fields: 1,
         mapping: fn(record) {
-          { use frame <- decode.field(1, decode.bit_array)
+          {
+            use frame <- decode.field(1, decode.bit_array)
             decode.success(PushFrame(frame))
           }
           |> decode.run(record, _)

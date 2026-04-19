@@ -33,9 +33,7 @@ fn init(flags: Dynamic) -> #(Model, Effect(Msg)) {
       router.listen_nav_clicks(fn(path) {
         NavigateTo(views.route_from_path(path))
       }),
-      router.on_popstate(fn(path) {
-        NavigateTo(views.route_from_path(path))
-      }),
+      router.on_popstate(fn(path) { NavigateTo(views.route_from_path(path)) }),
     ]),
   )
 }
