@@ -997,6 +997,342 @@ for (const [input, expected] of snakeCases) {
 }
 
 // ============================================================
+// Custom type cross-runtime tests
+// ============================================================
+//
+// A Gleam custom type on the BEAM is either a bare atom (0-arity
+// constructor) or an atom-tagged tuple {ctor_atom, field1, ...}.
+// In raw mode the decoder returns bare atoms as strings and tagged
+// tuples as ["ctor_name", ...fields]. These tests cover the gotchas
+// from git history: None/Nil distinction, 0-arity rebuild, float
+// field registry, nested types, and multi-variant dispatch.
+
+console.log("\nCustom type cross-runtime tests:");
+
+// --- BEAM → JS: 0-arity custom type (bare atom) ---
+
+testDecode("0-arity custom type: pending", "pending", r => {
+  assert.equal(r, "pending");
+});
+
+testDecode("0-arity custom type: active", "active", r => {
+  assert.equal(r, "active");
+});
+
+testDecode("0-arity custom type: cancelled", "cancelled", r => {
+  assert.equal(r, "cancelled");
+});
+
+// --- BEAM → JS: N-arity custom types ---
+
+testDecode("N-arity custom type: point record", "{point, 1.5, -2.3}", r => {
+  assert.deepEqual(r, ["point", 1.5, -2.3]);
+});
+
+testDecode("N-arity custom type: person record with mixed primitives",
+  "{person, <<\"Alice\">>, 30, true}", r => {
+    assert.deepEqual(r, ["person", "Alice", 30, true]);
+  });
+
+testDecode("multi-variant custom type: circle", "{circle, 5.0}", r => {
+  assert.deepEqual(r, ["circle", 5.0]);
+});
+
+testDecode("multi-variant custom type: rectangle", "{rectangle, 10.0, 20.0}", r => {
+  assert.deepEqual(r, ["rectangle", 10.0, 20.0]);
+});
+
+testDecode("multi-variant custom type: 0-arity variant (unknown)", "unknown", r => {
+  assert.equal(r, "unknown");
+});
+
+// --- BEAM → JS: nested custom types ---
+
+testDecode("nested custom type: label containing point",
+  "{label, <<\"origin\">>, {point, 0.0, 0.0}}", r => {
+    assert.deepEqual(r, ["label", "origin", ["point", 0.0, 0.0]]);
+  });
+
+testDecode("nested custom type: deeply nested records",
+  "{outer, {middle, {inner, 42}}}", r => {
+    assert.deepEqual(r, ["outer", ["middle", ["inner", 42]]]);
+  });
+
+// --- BEAM → JS: custom type inside Option/Result/List ---
+
+testDecode("some wrapping custom type", "{some, {point, 1.0, 2.0}}", r => {
+  assert.deepEqual(r, ["some", ["point", 1.0, 2.0]]);
+});
+
+testDecode("ok wrapping custom type", "{ok, {circle, 3.0}}", r => {
+  assert.deepEqual(r, ["ok", ["circle", 3.0]]);
+});
+
+testDecode("error wrapping 0-arity custom type", "{error, cancelled}", r => {
+  assert.deepEqual(r, ["error", "cancelled"]);
+});
+
+testDecode("list of 0-arity custom types",
+  "[pending, active, cancelled, active]", r => {
+    assert.deepEqual(r, ["pending", "active", "cancelled", "active"]);
+  });
+
+testDecode("list of atom-tagged tuples",
+  "[{circle, 1.0}, {rectangle, 2.0, 3.0}, unknown]", r => {
+    assert.deepEqual(r, [
+      ["circle", 1.0],
+      ["rectangle", 2.0, 3.0],
+      "unknown",
+    ]);
+  });
+
+// --- JS → BEAM: 0-arity custom type (bare atom) ---
+
+test("Encode", "0-arity custom type (writeAtom)", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeAtom("pending");
+  const b64 = bufferToBase64(enc.result());
+  const erlResult = etfDecodeInErlang(b64);
+  assert.equal(erlResult, "pending");
+});
+
+// --- JS → BEAM: N-arity custom types (atom-tagged tuple) ---
+
+test("Encode", "N-arity custom type: point", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(104); // SMALL_TUPLE_EXT
+  enc.writeUint8(3);
+  enc.writeAtom("point");
+  enc.writeUint8(70); enc.writeFloat64(1.5); // NEW_FLOAT_EXT
+  enc.writeUint8(70); enc.writeFloat64(-2.3);
+  const b64 = bufferToBase64(enc.result());
+  const erlResult = etfDecodeInErlang(b64);
+  assert.equal(erlResult, "{point,1.5,-2.3}");
+});
+
+test("Encode", "N-arity custom type: person with mixed primitives", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(104);
+  enc.writeUint8(4);
+  enc.writeAtom("person");
+  enc.encodeBinary("Alice");
+  enc.encodeNumber(30);
+  enc.writeAtom("true");
+  const b64 = bufferToBase64(enc.result());
+  const erlResult = etfDecodeInErlang(b64);
+  assert.equal(erlResult, "{person,<<\"Alice\">>,30,true}");
+});
+
+test("Encode", "nested custom type: label containing point", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(104); enc.writeUint8(3);
+  enc.writeAtom("label");
+  enc.encodeBinary("origin");
+  enc.writeUint8(104); enc.writeUint8(3);
+  enc.writeAtom("point");
+  enc.writeUint8(70); enc.writeFloat64(0.0);
+  enc.writeUint8(70); enc.writeFloat64(0.0);
+  const b64 = bufferToBase64(enc.result());
+  const erlResult = etfDecodeInErlang(b64);
+  assert.equal(erlResult, "{label,<<\"origin\">>,{point,0.0,0.0}}");
+});
+
+// --- JS → BEAM: custom type wrapped in Option/Result ---
+
+test("Encode", "some wrapping custom type", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(104); enc.writeUint8(2);
+  enc.writeAtom("some");
+  enc.writeUint8(104); enc.writeUint8(3);
+  enc.writeAtom("point");
+  enc.writeUint8(70); enc.writeFloat64(1.0);
+  enc.writeUint8(70); enc.writeFloat64(2.0);
+  const b64 = bufferToBase64(enc.result());
+  const erlResult = etfDecodeInErlang(b64);
+  assert.equal(erlResult, "{some,{point,1.0,2.0}}");
+});
+
+// --- Float field registry: full cross-runtime roundtrip ---
+
+test("FloatRegistry", "registry roundtrip: whole-number floats preserved BEAM → JS → BEAM", () => {
+  // 1. BEAM encodes {point, 2.0, 3.0} as {point, NEW_FLOAT_EXT, NEW_FLOAT_EXT}
+  const buf = etfFromErlang("{point, 2.0, 3.0}");
+  const decoder = new ETFDecoder(buf);
+  const decoded = decoder.decode();
+  assert.deepEqual(decoded, ["point", 2.0, 3.0]);
+  assert.equal(Number.isInteger(decoded[1]), true); // 2.0 === 2 in JS
+
+  // 2. JS re-encodes using float field registry, BEAM sees floats not ints
+  registerFloatFields("point", [0, 1]);
+  try {
+    const enc = new ETFEncoder();
+    enc.writeUint8(131);
+    enc.writeUint8(104); enc.writeUint8(3);
+    enc.writeAtom("point");
+    // Simulate what the custom-type encode path does: check registry,
+    // force NEW_FLOAT_EXT for registered indices.
+    const floatIndices = floatFieldRegistry.get("point");
+    [decoded[1], decoded[2]].forEach((v, i) => {
+      if (floatIndices && floatIndices.has(i)) {
+        enc.writeUint8(70); enc.writeFloat64(v);
+      } else {
+        enc.encodeTerm(v);
+      }
+    });
+    const b64 = bufferToBase64(enc.result());
+    const erlResult = etfDecodeInErlang(b64);
+    assert.equal(erlResult, "{point,2.0,3.0}");
+  } finally {
+    floatFieldRegistry.delete("point");
+  }
+});
+
+// ============================================================
+// RpcError envelope cross-runtime tests
+// ============================================================
+//
+// Response frame wire shape: Result(MsgFromServer, RpcError).
+// Error variants per libero/error.gleam:
+//   malformed_request                 -> MalformedRequest (bare atom)
+//   {app_error, appErr}               -> AppError(appErr)
+//   {unknown_function, name}          -> UnknownFunction(name)
+//   {internal_error, traceId, msg}    -> InternalError(traceId, msg)
+
+console.log("\nRpcError envelope tests:");
+
+testDecode("Error(MalformedRequest) envelope",
+  "{error, malformed_request}", r => {
+    assert.deepEqual(r, ["error", "malformed_request"]);
+  });
+
+testDecode("Error(AppError) envelope",
+  "{error, {app_error, <<\"something failed\">>}}", r => {
+    assert.deepEqual(r, ["error", ["app_error", "something failed"]]);
+  });
+
+testDecode("Error(UnknownFunction) envelope",
+  "{error, {unknown_function, <<\"do_thing\">>}}", r => {
+    assert.deepEqual(r, ["error", ["unknown_function", "do_thing"]]);
+  });
+
+testDecode("Error(InternalError) envelope",
+  "{error, {internal_error, <<\"trace-123\">>, <<\"boom\">>}}", r => {
+    assert.deepEqual(r, ["error", ["internal_error", "trace-123", "boom"]]);
+  });
+
+testDecode("Ok(MsgFromServer) envelope (custom type payload)",
+  "{ok, {items_loaded, [{item, 1, <<\"apple\">>}]}}", r => {
+    assert.deepEqual(r, ["ok", ["items_loaded", [["item", 1, "apple"]]]]);
+  });
+
+// ============================================================
+// Float edge cases (NaN, Infinity, -0.0)
+// ============================================================
+
+console.log("\nFloat edge case tests:");
+
+// NaN: IEEE 754 NaN encodes as NEW_FLOAT_EXT with any NaN bit pattern.
+// BEAM rejects it (can't have NaN as a float), so only JS→JS and a BEAM
+// decode-rejection test make sense.
+test("RoundTrip", "NaN via JS encode → JS decode", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(70);
+  enc.writeFloat64(NaN);
+  const decoder = new ETFDecoder(enc.result());
+  const result = decoder.decode();
+  assert.ok(Number.isNaN(result), "expected NaN, got " + result);
+});
+
+test("RoundTrip", "Infinity via JS encode → JS decode", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(70);
+  enc.writeFloat64(Infinity);
+  const decoder = new ETFDecoder(enc.result());
+  assert.equal(decoder.decode(), Infinity);
+});
+
+test("RoundTrip", "-Infinity via JS encode → JS decode", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(70);
+  enc.writeFloat64(-Infinity);
+  const decoder = new ETFDecoder(enc.result());
+  assert.equal(decoder.decode(), -Infinity);
+});
+
+test("RoundTrip", "-0.0 preserved via JS encode → JS decode", () => {
+  const enc = new ETFEncoder();
+  enc.writeUint8(131);
+  enc.writeUint8(70);
+  enc.writeFloat64(-0.0);
+  const decoder = new ETFDecoder(enc.result());
+  const result = decoder.decode();
+  // Object.is distinguishes -0 from +0
+  assert.ok(Object.is(result, -0), "expected -0, got " + result);
+});
+
+// ============================================================
+// Dict (map) non-string key tests
+// ============================================================
+
+console.log("\nMap non-string key tests:");
+
+testDecode("map with integer keys", "#{1 => <<\"one\">>, 2 => <<\"two\">>}", r => {
+  assert.ok(r instanceof Map);
+  assert.equal(r.get(1), "one");
+  assert.equal(r.get(2), "two");
+});
+
+testDecode("map with atom keys", "#{ok => 1, err => 0}", r => {
+  assert.ok(r instanceof Map);
+  assert.equal(r.get("ok"), 1);
+  assert.equal(r.get("err"), 0);
+});
+
+testDecode("map with tuple keys", "#{{a, 1} => <<\"x\">>, {b, 2} => <<\"y\">>}", r => {
+  assert.ok(r instanceof Map);
+  // Map with object keys - iterate
+  let foundA = false, foundB = false;
+  for (const [k, v] of r.entries()) {
+    if (Array.isArray(k) && k[0] === "a" && k[1] === 1 && v === "x") foundA = true;
+    if (Array.isArray(k) && k[0] === "b" && k[1] === 2 && v === "y") foundB = true;
+  }
+  assert.ok(foundA && foundB);
+});
+
+test("Encode", "JS Map with integer keys → BEAM map", () => {
+  const m = new Map([[1, "one"], [2, "two"]]);
+  const buf = jsEncode(m);
+  const b64 = bufferToBase64(buf);
+  const erlResult = etfDecodeInErlang(b64);
+  assert.ok(erlResult.includes("1 => <<\"one\">>"), `got: ${erlResult}`);
+  assert.ok(erlResult.includes("2 => <<\"two\">>"), `got: ${erlResult}`);
+});
+
+// ============================================================
+// Large tuple (LARGE_TUPLE_EXT, tag 105) — arity > 255
+// ============================================================
+
+test("RoundTrip", "LARGE_TUPLE_EXT (arity 256)", () => {
+  const elements = Array.from({ length: 256 }, (_, i) => i);
+  const buf = jsEncode(elements);
+  const bytes = new Uint8Array(buf);
+  assert.equal(bytes[1], 105, "expected LARGE_TUPLE_EXT tag (105)");
+  const decoder = new ETFDecoder(buf);
+  const result = decoder.decode();
+  assert.equal(result.length, 256);
+  assert.equal(result[0], 0);
+  assert.equal(result[255], 255);
+});
+
+// ============================================================
 // Summary
 // ============================================================
 
