@@ -27,11 +27,6 @@ glinter = "~> 2.14"
 gleeunit = "~> 1.0"
 gleam_erlang = "~> 1.0"
 
-[documentation]
-pages = [
-  { title = "llms.txt", path = "llms.txt", source = "llms.txt" },
-]
-
 [tools.glinter]
 stats = true
 warnings_as_errors = true
