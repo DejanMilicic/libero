@@ -29,7 +29,7 @@ gleam_erlang = "~> 1.0"
 
 [documentation]
 pages = [
-  { title = "llms.txt", path = "llms.txt" },
+  { title = "llms.txt", path = "llms.txt", source = "llms.txt" },
 ]
 
 [tools.glinter]
