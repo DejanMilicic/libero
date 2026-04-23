@@ -1,4 +1,10 @@
 //// `libero build` — gen + build server + build all clients.
+////
+//// NOTE: The build is not atomic. `gen` writes generated files first,
+//// then the server and each client are built sequentially. If a client
+//// build fails, the server artifacts and generated files remain on
+//// disk. This is acceptable for a development CLI — production
+//// deployments should use CI pipelines with rollback capability.
 
 import gleam/io
 import gleam/list

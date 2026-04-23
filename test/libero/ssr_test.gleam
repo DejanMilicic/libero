@@ -94,15 +94,18 @@ pub fn call_returns_bad_response_on_empty_bytes_test() {
 // --- ssr.document ---
 
 pub fn document_contains_title_and_body_test() {
+  let flags_value = "abc123"
   let html =
     ssr.document(
       title: "Test Page",
       body: "<p>Hello</p>",
-      flags: "abc123",
+      flags: flags_value,
       client_module: "/web/app.mjs",
     )
   let assert True = string.contains(html, "<title>Test Page</title>")
   let assert True = string.contains(html, "<p>Hello</p>")
-  let assert True = string.contains(html, "abc123")
+  // flags are base64-encoded ETF, not the raw value
+  let encoded_flags = ssr.encode_flags(flags_value)
+  let assert True = string.contains(html, encoded_flags)
   let assert True = string.contains(html, "/web/app.mjs")
 }

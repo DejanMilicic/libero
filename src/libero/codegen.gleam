@@ -219,29 +219,40 @@ fn message_alias(module_path: String) -> String {
 /// Detect modules whose last path segment would collide in generated output.
 /// E.g. `shared/admin/messages` and `shared/user/messages` both produce
 /// `messages.gleam`, and the second silently overwrites the first.
-/// Returns a list of warnings printed to stderr (does not fail the build).
+/// Returns an error listing all collisions, or Ok(Nil) if none.
+/// nolint: stringly_typed_error -- CLI-facing error, String is appropriate
 pub fn check_segment_collisions(
   message_modules message_modules: List(MessageModule),
-) -> Nil {
+) -> Result(Nil, String) {
   let segments =
     list.fold(message_modules, dict.new(), fn(acc, m) {
       let segment = scanner.last_module_segment(module_path: m.module_path)
       let existing = dict.get(acc, segment) |> result.unwrap([])
       dict.insert(acc, segment, [m.module_path, ..existing])
     })
-  dict.each(segments, fn(segment, paths) {
-    case paths {
-      [_, _, ..] ->
-        io.println_error(
-          "warning: modules "
-          <> string.join(list.reverse(paths), ", ")
-          <> " share the output filename \""
-          <> segment
-          <> ".gleam\" — the last one written wins",
-        )
-      _ -> Nil
-    }
-  })
+  let collisions =
+    dict.fold(segments, [], fn(acc, segment, paths) {
+      case paths {
+        [_, _, ..] -> [
+          "modules "
+            <> string.join(list.reverse(paths), ", ")
+            <> " share the output filename \""
+            <> segment
+            <> ".gleam\"",
+          ..acc
+        ]
+        _ -> acc
+      }
+    })
+  case collisions {
+    [] -> Ok(Nil)
+    _ ->
+      Error(
+        "segment collision: "
+        <> string.join(list.reverse(collisions), "; ")
+        <> " — rename one of the modules to avoid overwriting",
+      )
+  }
 }
 
 // ---------- Client send function generator ----------
@@ -807,15 +818,37 @@ fn field_decoder_call_depth(
   }
 }
 
-// nolint: thrown_away_error -- absence means no decoder needed
 /// Emit the `decode_msg_from_server` entry point function.
 /// Delegates to the per-type decoder to avoid duplicating the switch body.
 /// If no MsgFromServer type is found in the discovered list, returns "".
+///
+/// DESIGN NOTE: Only the first MsgFromServer type is wired into the decoder
+/// entry point. Multiple MsgFromServer types across different modules are not
+/// supported — define a single MsgFromServer in one shared module.
+/// If multiple are found, a build-time warning is printed.
 fn emit_msg_from_server_decoder(discovered: List(DiscoveredType)) -> String {
-  case list.find(discovered, fn(t) { t.type_name == "MsgFromServer" }) {
-    Error(_) -> ""
-    Ok(t) -> {
+  let msg_from_server_types =
+    list.filter(discovered, fn(t) { t.type_name == "MsgFromServer" })
+  case msg_from_server_types {
+    [] -> ""
+    [t] -> {
       let fn_name = decoder_fn_name(t.module_path, t.type_name)
+      "export function decode_msg_from_server(term) {\n"
+      <> "  return "
+      <> fn_name
+      <> "(term);\n"
+      <> "}"
+    }
+    [first, ..rest] -> {
+      let other_modules =
+        list.map(rest, fn(t) { t.module_path }) |> string.join(", ")
+      io.println_error(
+        "warning: multiple MsgFromServer types found. Only "
+        <> first.module_path
+        <> " will be wired into the client decoder. Ignored: "
+        <> other_modules,
+      )
+      let fn_name = decoder_fn_name(first.module_path, first.type_name)
       "export function decode_msg_from_server(term) {\n"
       <> "  return "
       <> fn_name

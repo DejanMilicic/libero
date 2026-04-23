@@ -3,6 +3,7 @@
 //// Reads the `[tools.libero]` section from gleam.toml.
 
 import gleam/dict
+import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -73,8 +74,16 @@ pub fn parse(input: String) -> Result(TomlConfig, String) {
     Error(_) -> Ok(Nil)
   })
 
-  let port =
+  let raw_port =
     tom.get_int(parsed, ["tools", "libero", "port"]) |> result.unwrap(8080)
+  use port <- result.try(case raw_port >= 1 && raw_port <= 65_535 {
+    True -> Ok(raw_port)
+    False ->
+      Error(
+        "port must be between 1 and 65535, got: "
+        <> int.to_string(raw_port),
+      )
+  })
 
   let rest =
     tom.get_bool(parsed, ["tools", "libero", "server", "rest"])

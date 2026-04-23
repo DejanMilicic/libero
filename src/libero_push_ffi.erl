@@ -20,7 +20,13 @@ pg_leave(Topic) ->
 
 pg_send(Topic, Frame) ->
     Members = pg:get_members(?SCOPE, Topic),
+    Self = self(),
     lists:foreach(fun(Pid) ->
-        Pid ! {libero_push, Frame}
+        %% Skip self to avoid re-processing our own push messages
+        %% in the WebSocket handler's message loop.
+        case Pid of
+            Self -> ok;
+            _ -> Pid ! {libero_push, Frame}
+        end
     end, Members),
     nil.

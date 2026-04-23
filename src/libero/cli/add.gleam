@@ -20,6 +20,7 @@ pub fn add_client(
   name name: String,
   target target: String,
 ) -> Result(Nil, String) {
+  use _ <- validate_name(name)
   use _ <- validate_target(target)
   let client_dir = path <> "/clients/" <> name
   let client_src = client_dir <> "/src"
@@ -67,6 +68,48 @@ pub fn add_client(
       Ok(Nil)
     }
   }
+}
+
+// nolint: stringly_typed_error
+fn validate_name(
+  name: String,
+  next: fn(Nil) -> Result(Nil, String),
+) -> Result(Nil, String) {
+  case string.to_graphemes(name) {
+    [] -> Error("client name cannot be empty")
+    [first, ..rest] ->
+      case is_lowercase_letter(first) {
+        False ->
+          Error(
+            "client name must start with a lowercase letter, got: " <> name,
+          )
+        True ->
+          case
+            list.all(rest, fn(ch) {
+              is_lowercase_letter(ch) || is_digit(ch) || ch == "_"
+            })
+          {
+            False ->
+              Error(
+                "client name must contain only lowercase letters, digits, and underscores, got: "
+                <> name,
+              )
+            True -> next(Nil)
+          }
+      }
+  }
+}
+
+const lowercase_letters = "abcdefghijklmnopqrstuvwxyz"
+
+const digits = "0123456789"
+
+fn is_lowercase_letter(ch: String) -> Bool {
+  string.contains(lowercase_letters, ch)
+}
+
+fn is_digit(ch: String) -> Bool {
+  string.contains(digits, ch)
 }
 
 // nolint: stringly_typed_error

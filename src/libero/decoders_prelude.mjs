@@ -88,21 +88,32 @@ export const decode_string = (term) => {
 };
 
 export const decode_bool = (term) => {
+  // Accepts both native booleans and strings "true"/"false" by design:
+  // ETF atoms decode to strings in raw mode, so the atom `true` arrives
+  // as the string "true". The typed decoder knows the expected type, so
+  // this ambiguity with Gleam String("true") is harmless in practice.
   if (term === true || term === "true") return true;
   if (term === false || term === "false") return false;
   throw new DecodeError("expected Bool, got " + String(term));
 };
 
 export const decode_bit_array = (term) => {
-  // libero's ETF decoder produces a BitArray-compatible value; pass through.
-  return term;
+  // libero's ETF decoder produces a BitArray-compatible value (has rawBuffer).
+  // Validate the shape to catch type mismatches early.
+  if (term && term.rawBuffer instanceof Uint8Array) return term;
+  // Also accept raw Uint8Array for interop convenience.
+  if (term instanceof Uint8Array) return term;
+  throw new DecodeError("expected BitArray, got " + typeof term);
 };
 
-export const decode_nil = (_term) => {
+export const decode_nil = (term) => {
   // Gleam `Nil` compiles to `undefined` on JS. Wire value is an empty
   // tuple on Erlang; the raw decoder hands us back either `undefined` or
-  // `[]` depending on context. Either way, Nil has no runtime payload.
-  return undefined;
+  // `[]` (empty tuple) depending on context. Either way, Nil has no
+  // runtime payload — validate then return undefined.
+  if (term === undefined || term === null) return undefined;
+  if (Array.isArray(term) && term.length === 0) return undefined;
+  throw new DecodeError("expected Nil, got " + typeof term);
 };
 
 // --- Generic combinators ---

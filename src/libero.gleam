@@ -73,6 +73,9 @@ pub fn main() -> Nil {
   }
 }
 
+/// erlang:halt/1 never returns — it terminates the VM. The Nil return
+/// type is a white lie required for type unification; code after
+/// `let _halt = halt(1)` is dead but satisfies the type checker.
 @external(erlang, "erlang", "halt")
 fn halt(code: Int) -> Nil
 

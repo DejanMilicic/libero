@@ -12,5 +12,11 @@ export function peelMsgWrapper(wrapper) {
   // Numeric index 0 is the first field of any Gleam custom type variant
   // with fields. If the variant has no fields, wrapper[0] is undefined,
   // which is Gleam Nil - correct for 0-arity acknowledgment variants.
+  //
+  // DESIGN NOTE: This accepts any object shape by design. The typed
+  // decoder layer (rpc_decoders_ffi.mjs) guarantees the correct
+  // constructor shape before this is called — validation here would
+  // be redundant. See scanner.validate_msg_from_server_fields for
+  // the build-time enforcement.
   return wrapper[0];
 }

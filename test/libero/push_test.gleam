@@ -22,6 +22,21 @@ fn receive_push(timeout: Int) -> Result(BitArray, Nil) {
   process.selector_receive(from: selector, within: timeout)
 }
 
+/// Send a push from a separate process so the self-filter in pg_send
+/// doesn't suppress the message. This mirrors real usage where the
+/// sender (e.g. a handler) is a different process from the subscriber
+/// (the WebSocket handler).
+fn send_from_other_process(action: fn() -> Nil) -> Nil {
+  let subject = process.new_subject()
+  let _ =
+    process.spawn(fn() {
+      action()
+      process.send(subject, Nil)
+    })
+  let assert Ok(Nil) = process.receive(subject, 1000)
+  Nil
+}
+
 pub fn init_is_idempotent_test() {
   push.init()
   push.init()
@@ -31,11 +46,13 @@ pub fn join_and_receive_push_test() {
   push.init()
   push.join(topic: "test_push_join")
 
-  push.send_to_clients(
-    topic: "test_push_join",
-    module: "shared/messages",
-    msg: "hello",
-  )
+  send_from_other_process(fn() {
+    push.send_to_clients(
+      topic: "test_push_join",
+      module: "shared/messages",
+      msg: "hello",
+    )
+  })
 
   let assert Ok(_frame) = receive_push(500)
 
@@ -47,11 +64,13 @@ pub fn leave_stops_receiving_test() {
   push.join(topic: "test_push_leave")
   push.leave(topic: "test_push_leave")
 
-  push.send_to_clients(
-    topic: "test_push_leave",
-    module: "shared/messages",
-    msg: "should not arrive",
-  )
+  send_from_other_process(fn() {
+    push.send_to_clients(
+      topic: "test_push_leave",
+      module: "shared/messages",
+      msg: "should not arrive",
+    )
+  })
 
   let assert Error(Nil) = receive_push(100)
 }
@@ -60,11 +79,13 @@ pub fn register_and_send_to_client_test() {
   push.init()
   push.register(client_id: "test_push_user_1")
 
-  push.send_to_client(
-    client_id: "test_push_user_1",
-    module: "shared/messages",
-    msg: "direct",
-  )
+  send_from_other_process(fn() {
+    push.send_to_client(
+      client_id: "test_push_user_1",
+      module: "shared/messages",
+      msg: "direct",
+    )
+  })
 
   let assert Ok(_frame) = receive_push(500)
 

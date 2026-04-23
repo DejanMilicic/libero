@@ -1,6 +1,7 @@
 import glance
 import gleam/bool
 import gleam/dict.{type Dict}
+import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -229,13 +230,26 @@ fn process_type_ast(
   // Known limitation: type aliases that wrap custom types are not walked
   // transitively. If a custom type is only reachable through an alias,
   // its atom won't be pre-registered and the typed decoder won't be emitted,
-  // causing a silent decode failure at runtime. This is tracked and should
+  // causing a decode failure at runtime. This is tracked and should
   // be fixed by resolving the alias target and walking through it.
   // For now, consumers must reference the underlying custom type directly
   // in their MsgFromClient/MsgFromServer fields.
   let is_alias =
     list.any(ast.type_aliases, fn(d) { d.definition.name == type_name })
-  use <- bool.lazy_guard(when: is_alias, return: fn() { do_walk(state) })
+  use <- bool.lazy_guard(
+    when: is_alias,
+    return: fn() {
+      io.println_error(
+        "warning: type alias \""
+        <> type_name
+        <> "\" in "
+        <> module_path
+        <> " is not walked transitively. "
+        <> "If it wraps a custom type used in messages, reference the underlying type directly.",
+      )
+      do_walk(state)
+    },
+  )
   // Find the custom type definition
   case list.find(ast.custom_types, fn(d) { d.definition.name == type_name }) {
     Error(Nil) ->
@@ -466,6 +480,11 @@ fn field_type_of(
           field_type_of(t: e, resolver:, current_module:)
         }),
       )
+    // Functions and holes cannot be serialized over ETF. Mapped to TypeVar
+    // which throws at runtime in the typed decoder ("TypeVar<_fn> not supported").
+    // This is intentional — a build-time error would require tracking which
+    // fields are transitively reachable from messages, which the walker doesn't
+    // do for non-custom types. The runtime error is clear and immediate.
     glance.FunctionType(..) -> TypeVar(name: "_fn")
     glance.HoleType(..) -> TypeVar(name: "_")
     glance.NamedType(name:, module:, parameters:, ..) ->

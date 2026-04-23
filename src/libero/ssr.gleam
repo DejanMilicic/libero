@@ -98,19 +98,22 @@ pub fn decode_flags(flags: Dynamic) -> Result(a, SsrError) {
 /// The `title` is HTML-escaped automatically. The `body` is inserted
 /// as raw HTML (assumed to be pre-rendered Lustre output). The
 /// `client_module` is a JS import path controlled by the developer,
-/// not user input — it is not escaped.
+/// not user input — it is not escaped. The `flags` value is encoded
+/// internally via `encode_flags`, producing a base64 string that is
+/// safe to embed in a JS string literal.
 pub fn document(
   title title: String,
   body body: String,
-  flags flags: String,
+  flags flags: a,
   client_module client_module: String,
 ) -> String {
+  let encoded_flags = encode_flags(flags)
   "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>"
   <> escape_html(title)
   <> "</title>\n</head>\n<body>\n  <div id=\"app\">"
   <> body
   <> "</div>\n  <script>window.__LIBERO_FLAGS__ = \""
-  <> flags
+  <> encoded_flags
   <> "\";</script>\n  <script type=\"module\">\n    import { main } from \""
   <> client_module
   <> "\";\n    main();\n  </script>\n</body>\n</html>"

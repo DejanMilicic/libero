@@ -305,6 +305,11 @@ class ETFDecoder {
     }
   }
 
+  // DESIGN NOTE: No atom count limit on the JS side (unlike Erlang's [safe]
+  // flag). This is acceptable because: (1) the server is the only sender and
+  // it encodes well-typed Gleam values, (2) the WebSocket server (mist) can
+  // enforce frame size limits, and (3) the typed decoder layer rejects
+  // unknown constructors. A standalone ETF library should add a limit.
   decodeAtom(len) {
     const name = this.readString(len);
     // Erlang's hard limit is 255 codepoints (not bytes). UTF-8 codepoints
@@ -588,9 +593,13 @@ class ETFEncoder {
       return;
     }
 
-    // Fallback: try to encode as a generic object - shouldn't happen
-    // with well-typed Gleam, but encode as a string representation
-    this.encodeBinary(String(value));
+    // Fallback: this indicates a bug in the calling code — all Gleam
+    // types should be handled above. Throw rather than silently
+    // producing "[object Object]" which would be a corrupt payload.
+    throw new Error(
+      "ETF encode: unsupported value type: " + typeof value +
+      " (" + String(value) + ")"
+    );
   }
 
   writeAtom(name) {
@@ -972,6 +981,11 @@ function ensureSocket(url) {
     if (ws) {
       const sock = ws;
       ws = null;
+      // Clear pending callbacks immediately so a reconnection via the
+      // next send() starts with a clean FIFO state. The "close" event
+      // fires asynchronously after sock.close(), so without this, a
+      // send() call between error and close could queue into stale state.
+      clearAllPending("WebSocket error");
       sock.close();
     }
   });
@@ -990,6 +1004,15 @@ function ensureSocket(url) {
 export function send(url, module, msg, callback) {
   ensureSocket(url);
   const payload = encode_call(module, msg);
+  // DESIGN NOTE: Timeout + FIFO desync risk.
+  // When a timeout fires and we remove the entry from responseCallbacks,
+  // the server may still send a response for that request later. That
+  // response will be matched to the *next* pending callback (FIFO), causing
+  // all subsequent responses to be misrouted. This is a known limitation
+  // of the FIFO matching design. The v5 wire protocol adds request IDs to
+  // eliminate this entirely (see docs/request_ids.md). For v4, we close
+  // the WebSocket after a timeout to force a clean reconnection, resetting
+  // the FIFO state.
   const timer = setTimeout(() => {
     // Remove from whichever queue this entry is in
     const pendingIdx = pendingSends.findIndex(e => e.callback === callback);
@@ -1001,6 +1024,15 @@ export function send(url, module, msg, callback) {
       responseCallbacks.splice(responseIdx, 1);
     }
     callback(makeConnectionError("Request timed out"));
+    // Close the WebSocket to prevent FIFO desync: the server's late
+    // response for the timed-out request would otherwise be delivered
+    // to the wrong callback. The next send() call will reconnect.
+    if (ws) {
+      const sock = ws;
+      ws = null;
+      clearAllPending("WebSocket closed after request timeout");
+      sock.close();
+    }
   }, REQUEST_TIMEOUT_MS);
 
   if (ws && ws.readyState === WebSocket.OPEN) {
