@@ -9,7 +9,7 @@ import gleam/string
 import simplifile
 
 import libero/gen_error.{
-  type GenError, CannotReadFile, ParseFailed, TypeAliasNotSupported, TypeNotFound,
+  type GenError, CannotReadFile, ParseFailed, TypeNotFound,
   UnresolvedTypeModule,
 }
 import libero/scanner.{type MessageModule}
@@ -226,27 +226,41 @@ fn process_type_ast(
   ast ast: glance.Module,
   state state: WalkerState,
 ) -> Result(List(DiscoveredType), List(GenError)) {
-  // Known limitation: type aliases that wrap custom types are not walked
-  // transitively. If a custom type is only reachable through an alias,
-  // its atom won't be pre-registered and the typed decoder won't be emitted,
-  // causing a decode failure at runtime. This is tracked and should
-  // be fixed by resolving the alias target and walking through it.
-  // For now, consumers must reference the underlying custom type directly
-  // in their MsgFromClient/MsgFromServer fields.
-  let is_alias =
-    list.any(ast.type_aliases, fn(d) { d.definition.name == type_name })
-  use <- bool.lazy_guard(
-    when: is_alias,
-    return: fn() {
+  // Type aliases are transparent: resolve the alias target and enqueue
+  // any custom types found inside it. The alias itself doesn't produce
+  // a DiscoveredType (it has no variants to register).
+  case list.find(ast.type_aliases, fn(d) { d.definition.name == type_name }) {
+    Ok(alias_def) -> {
+      let resolver = build_type_resolver(ast.imports)
+      let target_refs =
+        collect_type_refs(
+          t: alias_def.definition.aliased,
+          resolver:,
+          current_module: module_path,
+        )
+      let new_refs =
+        list.filter(target_refs, fn(ref) {
+          let #(ref_module, ref_type) = ref
+          !set.contains(state.visited, ref)
+          && !is_skipped_module(ref_module)
+          && !is_primitive_type(ref_type)
+        })
       do_walk(
-        WalkerState(..state, errors: [
-          TypeAliasNotSupported(module_path:, type_name:),
-          ..state.errors
-        ]),
+        WalkerState(..state, queue: list.append(new_refs, state.queue)),
       )
-    },
-  )
-  // Find the custom type definition
+    }
+    // Not an alias — find the custom type definition
+    Error(Nil) ->
+      process_type_ast_custom(module_path:, type_name:, ast:, state:)
+  }
+}
+
+fn process_type_ast_custom(
+  module_path module_path: String,
+  type_name type_name: String,
+  ast ast: glance.Module,
+  state state: WalkerState,
+) -> Result(List(DiscoveredType), List(GenError)) {
   case list.find(ast.custom_types, fn(d) { d.definition.name == type_name }) {
     Error(Nil) ->
       do_walk(
@@ -258,6 +272,7 @@ fn process_type_ast(
     Ok(ct_def) -> {
       let custom_type = ct_def.definition
       let resolver = build_type_resolver(ast.imports)
+      let aliases = build_alias_map(ast.type_aliases)
       // Collect variants and field type refs
       let #(variants_rev, new_queue_items_rev) =
         list.fold(custom_type.variants, #([], []), fn(acc, variant) {
@@ -268,6 +283,7 @@ fn process_type_ast(
               field_type_of(
                 t: variant_field_type(field),
                 resolver:,
+                aliases:,
                 current_module: module_path,
               )
             })
@@ -451,9 +467,11 @@ fn collect_type_refs(
 }
 
 /// Convert a glance.Type into a FieldType, resolving named types via the resolver.
+/// Type aliases in `aliases` are resolved transparently to their underlying type.
 fn field_type_of(
   t t: glance.Type,
   resolver resolver: TypeResolver,
+  aliases aliases: Dict(String, glance.Type),
   current_module current_module: String,
 ) -> FieldType {
   case t {
@@ -461,7 +479,7 @@ fn field_type_of(
     glance.TupleType(elements:, ..) ->
       TupleOf(
         list.map(elements, fn(e) {
-          field_type_of(t: e, resolver:, current_module:)
+          field_type_of(t: e, resolver:, aliases:, current_module:)
         }),
       )
     // Functions and holes cannot be serialized over ETF. Mapped to TypeVar
@@ -485,52 +503,78 @@ fn field_type_of(
         option.None, "Nil", [] | option.Some("gleam"), "Nil", [] -> NilField
         // List (unqualified or qualified)
         option.None, "List", [elem] | option.Some("gleam"), "List", [elem] ->
-          ListOf(field_type_of(t: elem, resolver:, current_module:))
+          ListOf(field_type_of(t: elem, resolver:, aliases:, current_module:))
         // Option (unqualified or qualified as option.Option)
         option.None, "Option", [inner]
         | option.Some("option"), "Option", [inner]
-        -> OptionOf(field_type_of(t: inner, resolver:, current_module:))
+        -> OptionOf(field_type_of(t: inner, resolver:, aliases:, current_module:))
         // Result (unqualified or qualified as result.Result)
         option.None, "Result", [ok, err]
         | option.Some("result"), "Result", [ok, err]
         ->
           ResultOf(
-            ok: field_type_of(t: ok, resolver:, current_module:),
-            err: field_type_of(t: err, resolver:, current_module:),
+            ok: field_type_of(t: ok, resolver:, aliases:, current_module:),
+            err: field_type_of(t: err, resolver:, aliases:, current_module:),
           )
         // Dict (unqualified or qualified as dict.Dict)
         option.None, "Dict", [key, value]
         | option.Some("dict"), "Dict", [key, value]
         ->
           DictOf(
-            key: field_type_of(t: key, resolver:, current_module:),
-            value: field_type_of(t: value, resolver:, current_module:),
+            key: field_type_of(t: key, resolver:, aliases:, current_module:),
+            value: field_type_of(t: value, resolver:, aliases:, current_module:),
           )
-        // Everything else: resolve to a UserType
-        _, _, _ -> {
-          let args =
-            list.map(parameters, fn(p) {
-              field_type_of(t: p, resolver:, current_module:)
-            })
-          let resolved_module =
-            resolve_type_module(
-              name: name,
-              module: module,
-              resolver: resolver,
-              current_module: current_module,
-            )
-          // Falls back to current_module for types defined in the same
-          // module (no module qualifier in the source). This is correct —
-          // unqualified type references are local by definition. If the
-          // type truly doesn't exist, it will be caught as TypeNotFound
-          // when the BFS visits this module_path + type_name pair.
-          let mp = result.unwrap(resolved_module, current_module)
-          let original_name =
-            result.unwrap(dict.get(resolver.original_names, name), name)
-          UserType(module_path: mp, type_name: original_name, args:)
-        }
+        // Everything else: check for local type alias, then resolve to UserType
+        _, _, _ ->
+          resolve_field_type(
+            name:,
+            module:,
+            parameters:,
+            resolver:,
+            aliases:,
+            current_module:,
+          )
       }
   }
+}
+
+/// Resolve a named type: if it's a local type alias, recurse on the aliased
+/// type; otherwise produce a UserType.
+fn resolve_field_type(
+  name name: String,
+  module module: option.Option(String),
+  parameters parameters: List(glance.Type),
+  resolver resolver: TypeResolver,
+  aliases aliases: Dict(String, glance.Type),
+  current_module current_module: String,
+) -> FieldType {
+  // Unqualified name matching a local type alias — resolve through it
+  case module, dict.get(aliases, name) {
+    option.None, Ok(aliased_type) ->
+      field_type_of(t: aliased_type, resolver:, aliases:, current_module:)
+    _, _ -> {
+      let args =
+        list.map(parameters, fn(p) {
+          field_type_of(t: p, resolver:, aliases:, current_module:)
+        })
+      let resolved_module =
+        resolve_type_module(name:, module:, resolver:, current_module:)
+      let mp = result.unwrap(resolved_module, current_module)
+      let original_name =
+        result.unwrap(dict.get(resolver.original_names, name), name)
+      UserType(module_path: mp, type_name: original_name, args:)
+    }
+  }
+}
+
+/// Build a map from type alias names to their underlying glance.Type.
+/// Used to resolve aliases transparently in field_type_of.
+fn build_alias_map(
+  type_aliases: List(glance.Definition(glance.TypeAlias)),
+) -> Dict(String, glance.Type) {
+  list.fold(type_aliases, dict.new(), fn(acc, def) {
+    dict.insert(acc, def.definition.name, def.definition.aliased)
+  })
 }
 
 fn build_type_resolver(

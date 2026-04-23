@@ -5,9 +5,15 @@
 Shipped in v4.2. `--database pg` and `--database sqlite` are supported.
 See `cli.gleam` and `cli/templates/db.gleam`.
 
+## ~~Type alias walk-through in walker~~ ✓ Implemented
+
+The walker now resolves type aliases transparently. When a message field
+references a type alias (e.g. `type Score = Int` or `type ItemList = List(Item)`),
+the walker follows the alias to its underlying type and walks through it
+transitively. See `process_type_ast` and `resolve_field_type` in `walker.gleam`.
+
 ## Future ideas
 
-- Type alias walk-through in walker (currently skips aliases silently)
 - Request IDs in wire protocol (see below)
 - Reconnection strategy for push handlers (currently consumer responsibility)
 

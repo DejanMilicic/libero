@@ -21,7 +21,7 @@ squirrel = \"~> 4.6\"
 "
     Sqlite ->
       "sqlight = \"~> 1.0\"
-marmot = \"~> 1.0\"
+marmot = \">= 1.1.0 and < 2.0.0\"
 logging = \"~> 1.5\"
 "
   }
