@@ -57,11 +57,12 @@ pub fn call(
       case response_bytes {
         <<_tag, etf:bytes>> -> {
           // dispatch encodes Ok(MsgFromServer_variant) or Error(RpcError).
-          // wire.decode returns the Gleam value directly via coerce.
-          let decoded: Result(response, _) = wire.decode(etf)
+          // wire.decode_safe returns a Result instead of panicking.
+          let decoded: Result(Result(response, _), _) =
+            wire.decode_safe(etf)
           case decoded {
-            Ok(response) -> Ok(expect(response))
-            Error(_) -> Error(DispatchError)
+            Ok(Ok(response)) -> Ok(expect(response))
+            Ok(Error(_)) | Error(_) -> Error(BadResponse)
           }
         }
         _ -> Error(BadResponse)

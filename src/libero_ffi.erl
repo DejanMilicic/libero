@@ -68,6 +68,7 @@ peel_msg_wrapper(Atom) when is_atom(Atom) ->
 %% for correct wrapper shapes — see scanner.validate_msg_from_server_fields.
 %% A defensive crash here would break legitimate pass-through paths.
 peel_msg_wrapper(Other) ->
+    logger:warning("[libero] peel_msg_wrapper: unexpected shape: ~p", [Other]),
     Other.
 
 try_call(F) ->

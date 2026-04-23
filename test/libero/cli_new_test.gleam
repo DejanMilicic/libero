@@ -1,4 +1,5 @@
 import gleam/option.{None, Some}
+import gleam/result
 import gleam/string
 import libero/cli
 import libero/cli/new as cli_new
@@ -71,6 +72,35 @@ pub fn scaffold_pg_test() {
 
   let _ = simplifile.delete("build/.test_cli_new")
   Nil
+}
+
+pub fn scaffold_empty_name_test() {
+  let result = cli_new.scaffold(path: "", database: None)
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True = string.contains(msg, "name cannot be empty")
+}
+
+pub fn scaffold_digit_start_name_test() {
+  let result = cli_new.scaffold(path: "123bad", database: None)
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True = string.contains(msg, "Must start with a lowercase letter")
+}
+
+pub fn scaffold_reserved_word_name_test() {
+  let result = cli_new.scaffold(path: "type", database: None)
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True = string.contains(msg, "reserved word")
+}
+
+pub fn scaffold_special_chars_name_test() {
+  let result = cli_new.scaffold(path: "my-app", database: None)
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True =
+    string.contains(msg, "only lowercase letters, digits, and underscores")
 }
 
 pub fn scaffold_sqlite_test() {

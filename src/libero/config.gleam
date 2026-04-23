@@ -2,6 +2,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import libero/cli/validation
 
 // ---------- Types ----------
 
@@ -153,9 +154,11 @@ fn validate_namespace(
       let is_valid = case graphemes {
         [] -> False
         [first, ..rest] ->
-          is_lowercase_letter(first)
+          validation.is_lowercase_letter(first)
           && list.all(rest, fn(ch) {
-            is_lowercase_letter(ch) || is_digit(ch) || ch == "_"
+            validation.is_lowercase_letter(ch)
+            || validation.is_digit(ch)
+            || ch == "_"
           })
       }
       case is_valid {
@@ -175,18 +178,14 @@ fn validate_namespace(
   }
 }
 
-fn is_lowercase_letter(ch: String) -> Bool {
-  string.contains("abcdefghijklmnopqrstuvwxyz", ch)
-}
-
-fn is_digit(ch: String) -> Bool {
-  string.contains("0123456789", ch)
-}
-
 /// Extract a `--name=value` flag from the argument list.
-/// Only supports `=` syntax (not `--name value` with a space).
-/// This is intentional — libero's internal flags all use `=` form
-/// and the CLI router handles positional args separately.
+///
+/// Only supports `--key=value` syntax (not space-separated `--key value`).
+/// This is intentional: `find_flag` is used for libero's internal codegen
+/// flags which always use `=` form. The space-separated pattern
+/// (`--database pg`, `--target javascript`) is handled by positional
+/// matching in `cli.parse_args` and is **not** interchangeable with this
+/// function.
 pub fn find_flag(
   args args: List(String),
   name name: String,

@@ -220,7 +220,6 @@ fn process_type_file(
   }
 }
 
-// nolint: deep_nesting -- recursive AST walker, nesting reflects data structure
 fn process_type_ast(
   module_path module_path: String,
   type_name type_name: String,
@@ -266,12 +265,8 @@ fn process_type_ast(
           let float_indices = detect_float_fields(variant.fields)
           let fields =
             list.map(variant.fields, fn(field) {
-              let field_type = case field {
-                glance.LabelledVariantField(item:, ..) -> item
-                glance.UnlabelledVariantField(item:) -> item
-              }
               field_type_of(
-                t: field_type,
+                t: variant_field_type(field),
                 resolver:,
                 current_module: module_path,
               )
@@ -341,11 +336,7 @@ fn load_ast(
 /// (JS erases this distinction at runtime, but ETF and BEAM need it).
 fn detect_float_fields(fields: List(glance.VariantField)) -> List(Int) {
   list.index_fold(fields, [], fn(acc, field, index) {
-    let field_type = case field {
-      glance.LabelledVariantField(item:, ..) -> item
-      glance.UnlabelledVariantField(item:) -> item
-    }
-    case is_float_type(field_type) {
+    case is_float_type(variant_field_type(field)) {
       True -> [index, ..acc]
       False -> acc
     }
@@ -372,11 +363,7 @@ fn collect_variant_field_refs(
 ) -> List(#(String, String)) {
   let field_refs =
     list.flat_map(variant.fields, fn(field) {
-      let field_type = case field {
-        glance.LabelledVariantField(item:, ..) -> item
-        glance.UnlabelledVariantField(item:) -> item
-      }
-      collect_type_refs(t: field_type, resolver:, current_module:)
+      collect_type_refs(t: variant_field_type(field), resolver:, current_module:)
     })
   list.filter(field_refs, fn(ref) {
     let #(ref_module, ref_type) = ref
@@ -644,4 +631,12 @@ fn build_triples(
 
 fn is_upper_grapheme(g: String) -> Bool {
   g != string.lowercase(g)
+}
+
+/// Extract the type from a variant field, whether labelled or unlabelled.
+pub fn variant_field_type(field: glance.VariantField) -> glance.Type {
+  case field {
+    glance.LabelledVariantField(item:, ..) -> item
+    glance.UnlabelledVariantField(item:) -> item
+  }
 }

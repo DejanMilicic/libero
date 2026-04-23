@@ -2,10 +2,9 @@
 
 import gleam/list
 import gleam/result
-import gleam/string
+import libero/cli/helpers
 import libero/cli/templates
 import libero/cli/validation
-import libero/format
 import libero/toml_config
 import simplifile
 
@@ -22,13 +21,13 @@ pub fn add_client(
   target target: String,
 ) -> Result(Nil, String) {
   use _ <- result.try(
-    validation.validate_name(name, "client", "gleam run -m libero -- add my_client --target javascript"),
+    validation.validate_name(name:, kind: "client", hint: "gleam run -m libero -- add my_client --target javascript"),
   )
   use _ <- validate_target(target)
   let client_dir = path <> "/clients/" <> name
   let client_src = client_dir <> "/src"
 
-  use _ <- map_err(simplifile.create_directory_all(client_src))
+  use _ <- helpers.map_err(simplifile.create_directory_all(client_src))
 
   // Generate client gleam.toml if missing
   let client_toml_path = client_dir <> "/gleam.toml"
@@ -39,20 +38,20 @@ pub fn add_client(
   )
 
   // Generate starter app if src is empty
-  use existing <- map_err(simplifile.get_files(client_src))
-  use _ <- map_err(case existing {
+  use existing <- helpers.map_err(simplifile.get_files(client_src))
+  use _ <- helpers.map_err(case existing {
     [] -> {
       let #(filename, content) = case target {
         "javascript" -> #("app.gleam", templates.starter_spa(name:))
         _ -> #("main.gleam", templates.starter_cli())
       }
-      write_formatted(path: client_src <> "/" <> filename, content:)
+      helpers.write_formatted(path: client_src <> "/" <> filename, content:)
     }
     _ -> Ok(Nil)
   })
 
   // Append [tools.libero.clients.<name>] to root gleam.toml if missing
-  use toml_content <- map_err(simplifile.read(path <> "/gleam.toml"))
+  use toml_content <- helpers.map_err(simplifile.read(path <> "/gleam.toml"))
   let already_declared = case toml_config.parse(toml_content) {
     Ok(cfg) -> list.any(cfg.clients, fn(c) { c.name == name })
     // nolint: thrown_away_error -- unparseable toml treated as "not declared"
@@ -67,7 +66,7 @@ pub fn add_client(
         <> "]\ntarget = \""
         <> target
         <> "\"\n"
-      use _ <- map_err(simplifile.append(path <> "/gleam.toml", addition))
+      use _ <- helpers.map_err(simplifile.append(path <> "/gleam.toml", addition))
       Ok(Nil)
     }
   }
@@ -124,24 +123,3 @@ fn write_if_missing(
   }
 }
 
-fn write_formatted(
-  path path: String,
-  content content: String,
-) -> Result(Nil, simplifile.FileError) {
-  let formatted = case string.ends_with(path, ".gleam") {
-    True -> format.format_gleam(content)
-    False -> content
-  }
-  simplifile.write(path, formatted)
-}
-
-// nolint: stringly_typed_error
-fn map_err(
-  result: Result(a, simplifile.FileError),
-  next: fn(a) -> Result(Nil, String),
-) -> Result(Nil, String) {
-  case result {
-    Ok(value) -> next(value)
-    Error(err) -> Error(simplifile.describe_error(err))
-  }
-}

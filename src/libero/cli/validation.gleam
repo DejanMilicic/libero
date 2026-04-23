@@ -7,11 +7,11 @@ const lowercase_letters = "abcdefghijklmnopqrstuvwxyz"
 
 const digits = "0123456789"
 
-fn is_lowercase_letter(ch: String) -> Bool {
+pub fn is_lowercase_letter(ch: String) -> Bool {
   string.contains(lowercase_letters, ch)
 }
 
-fn is_digit(ch: String) -> Bool {
+pub fn is_digit(ch: String) -> Bool {
   string.contains(digits, ch)
 }
 
@@ -25,9 +25,9 @@ const reserved_words = [
 /// Returns Ok(Nil) if valid, Error(String) with a user-facing error message if not.
 /// nolint: stringly_typed_error -- CLI-facing error, String is appropriate
 pub fn validate_name(
-  name: String,
-  kind: String,
-  hint: String,
+  name name: String,
+  kind kind: String,
+  hint hint: String,
 ) -> Result(Nil, String) {
   case string.to_graphemes(name) {
     [] ->

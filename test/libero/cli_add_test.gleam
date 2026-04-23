@@ -1,3 +1,4 @@
+import gleam/result
 import gleam/string
 import libero/cli/add as cli_add
 import simplifile
@@ -51,6 +52,39 @@ pub fn add_erlang_client_test() {
 
   let _ = simplifile.delete(dir)
   Nil
+}
+
+pub fn add_empty_name_test() {
+  let result =
+    cli_add.add_client(project_path: ".", name: "", target: "javascript")
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True = string.contains(msg, "name cannot be empty")
+}
+
+pub fn add_digit_start_name_test() {
+  let result =
+    cli_add.add_client(project_path: ".", name: "123bad", target: "javascript")
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True = string.contains(msg, "Must start with a lowercase letter")
+}
+
+pub fn add_reserved_word_name_test() {
+  let result =
+    cli_add.add_client(project_path: ".", name: "type", target: "javascript")
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True = string.contains(msg, "reserved word")
+}
+
+pub fn add_special_chars_name_test() {
+  let result =
+    cli_add.add_client(project_path: ".", name: "my-app", target: "javascript")
+  let assert True = result.is_error(result)
+  let assert Error(msg) = result
+  let assert True =
+    string.contains(msg, "only lowercase letters, digits, and underscores")
 }
 
 pub fn add_skips_existing_app_test() {

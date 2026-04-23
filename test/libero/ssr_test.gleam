@@ -1,8 +1,13 @@
 import gleam/bit_array
-import gleam/option.{None}
+import gleam/dynamic.{type Dynamic}
+import gleam/option.{None, Some}
 import gleam/string
+import libero/error.{PanicInfo}
 import libero/ssr
 import libero/wire
+
+@external(erlang, "gleam_stdlib", "identity")
+fn coerce(value: a) -> Dynamic
 
 // --- encode_flags / decode_flags roundtrip ---
 
@@ -61,7 +66,7 @@ pub fn call_expect_transforms_response_test() {
   let assert Ok(5) = result
 }
 
-pub fn call_returns_dispatch_error_on_error_response_test() {
+pub fn call_returns_bad_response_on_error_response_test() {
   let handler = fn(_state: Nil, data: BitArray) {
     let _ = data
     let response = wire.tag_response(wire.encode(Error("something went wrong")))
@@ -75,7 +80,7 @@ pub fn call_returns_dispatch_error_on_error_response_test() {
       msg: "ping",
       expect: fn(resp) { resp },
     )
-  let assert Error(ssr.DispatchError) = result
+  let assert Error(ssr.BadResponse) = result
 }
 
 pub fn call_returns_bad_response_on_empty_bytes_test() {
@@ -108,4 +113,62 @@ pub fn document_contains_title_and_body_test() {
   let encoded_flags = ssr.encode_flags(flags_value)
   let assert True = string.contains(html, encoded_flags)
   let assert True = string.contains(html, "/web/app.mjs")
+}
+
+// --- decode_flags ---
+
+pub fn decode_flags_roundtrip_test() {
+  let value = "server flags"
+  let encoded = ssr.encode_flags(value)
+  let flags = coerce(encoded)
+  let assert Ok(decoded) = ssr.decode_flags(flags)
+  let assert True = decoded == value
+}
+
+pub fn decode_flags_bad_base64_returns_bad_flags_test() {
+  let flags = coerce("not!valid!base64!!!")
+  let assert Error(ssr.BadFlags) = ssr.decode_flags(flags)
+}
+
+pub fn decode_flags_corrupt_etf_returns_bad_flags_test() {
+  // Valid base64 but not valid ETF
+  let bad_base64 = bit_array.base64_encode(<<0, 1, 2, 3>>, True)
+  let flags = coerce(bad_base64)
+  let assert Error(ssr.BadFlags) = ssr.decode_flags(flags)
+}
+
+// --- ssr.call panic path ---
+
+pub fn call_returns_dispatch_error_on_panic_test() {
+  let handler = fn(_state: Nil, _data: BitArray) {
+    let panic_info = PanicInfo(trace_id: "t1", fn_name: "test", reason: "boom")
+    #(<<>>, Some(panic_info), Nil)
+  }
+  let result: Result(String, ssr.SsrError) =
+    ssr.call(
+      handle: handler,
+      state: Nil,
+      module: "test",
+      msg: "ping",
+      expect: fn(resp) { resp },
+    )
+  let assert Error(ssr.DispatchError) = result
+}
+
+// --- escape_html XSS ---
+
+pub fn document_escapes_xss_in_title_test() {
+  let xss_title = "<script>alert(\"xss\")</script>"
+  let html =
+    ssr.document(
+      title: xss_title,
+      body: "",
+      flags: Nil,
+      client_module: "/app.mjs",
+    )
+  // The raw script tag must NOT appear in the output
+  let assert False = string.contains(html, "<script>alert(")
+  // The escaped version should appear instead
+  let assert True =
+    string.contains(html, "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;")
 }

@@ -443,7 +443,7 @@ const textEncoder = new TextEncoder();
 
 class ETFEncoder {
   constructor() {
-    // Start with 256 bytes, grow as needed.
+    // Start with 1024 bytes, grow as needed.
     this.buffer = new ArrayBuffer(1024);
     this.view = new DataView(this.buffer);
     this.bytes = new Uint8Array(this.buffer);
@@ -916,9 +916,24 @@ function clearAllPending(reason) {
 }
 
 function ensureSocket(url) {
-  if (ws !== null) return;
+  if (ws !== null) {
+    if (ws.url !== url) {
+      throw new Error(
+        "Libero only supports a single WebSocket connection. " +
+        "Already connected to " + ws.url + ", cannot connect to " + url,
+      );
+    }
+    return;
+  }
 
-  ws = new WebSocket(url);
+  let sock;
+  try {
+    sock = new WebSocket(url);
+  } catch (e) {
+    clearAllPending("WebSocket constructor failed: " + (e && e.message ? e.message : String(e)));
+    return;
+  }
+  ws = sock;
   ws.binaryType = "arraybuffer";
 
   ws.addEventListener("open", () => {

@@ -32,8 +32,10 @@ pub fn internal_error_roundtrips_through_wire_test() {
   // Wrap in a call envelope {module, value} and decode to verify structure survives.
   let envelope = ffi_encode(coerce(#("shared/test", coerce(encoded))))
   let assert Ok(#("shared/test", rebuilt)) = wire.decode_call(envelope)
-  let decoded: BitArray = unsafe_coerce(rebuilt)
-  let assert True = bit_array_byte_size(decoded) > 0
+  let decoded: Result(String, RpcError(Never)) =
+    wire.decode(unsafe_coerce(rebuilt))
+  let assert Error(InternalError(trace_id: "abc123", message: "Something went wrong, please try again.")) =
+    decoded
 }
 
 @external(erlang, "libero_ffi", "encode")
@@ -44,6 +46,3 @@ fn coerce(value: a) -> Dynamic
 
 @external(erlang, "gleam_stdlib", "identity")
 fn unsafe_coerce(value: Dynamic) -> a
-
-@external(erlang, "erlang", "byte_size")
-fn bit_array_byte_size(bits: BitArray) -> Int

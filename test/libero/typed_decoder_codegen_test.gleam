@@ -195,8 +195,9 @@ pub fn result_field_uses_result_decoder_test() {
   ]
   let js = codegen.emit_typed_decoders(types)
   let assert True = string.contains(js, "decode_result_of(")
-  let assert True = string.contains(js, "decode_string(t0)")
-  let assert True = string.contains(js, "decode_int(t0)")
+  // ok decoder uses t1, err decoder uses t2 (unique param names)
+  let assert True = string.contains(js, "decode_string(t1)")
+  let assert True = string.contains(js, "decode_int(t2)")
 }
 
 pub fn option_field_uses_option_decoder_test() {

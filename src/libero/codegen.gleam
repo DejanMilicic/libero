@@ -790,34 +790,47 @@ fn field_decoder_call_depth(
       <> ", "
       <> term_expr
       <> ")"
-    walker.ResultOf(ok, err) ->
+    walker.ResultOf(ok, err) -> {
+      let ok_param = "t" <> int.to_string(next)
+      let err_depth = next + 1
+      let err_param = "t" <> int.to_string(err_depth)
       "decode_result_of(("
-      <> param
+      <> ok_param
       <> ") => "
-      <> field_decoder_call_depth(ok, param, next)
+      <> field_decoder_call_depth(ok, ok_param, next + 1)
       <> ", ("
-      <> param
+      <> err_param
       <> ") => "
-      <> field_decoder_call_depth(err, param, next)
+      <> field_decoder_call_depth(err, err_param, err_depth + 1)
       <> ", "
       <> term_expr
       <> ")"
-    walker.DictOf(k, v) ->
+    }
+    walker.DictOf(k, v) -> {
+      let key_param = "t" <> int.to_string(next)
+      let val_depth = next + 1
+      let val_param = "t" <> int.to_string(val_depth)
       "decode_dict_of(("
-      <> param
+      <> key_param
       <> ") => "
-      <> field_decoder_call_depth(k, param, next)
+      <> field_decoder_call_depth(k, key_param, next + 1)
       <> ", ("
-      <> param
+      <> val_param
       <> ") => "
-      <> field_decoder_call_depth(v, param, next)
+      <> field_decoder_call_depth(v, val_param, val_depth + 1)
       <> ", "
       <> term_expr
       <> ")"
+    }
     walker.TupleOf(elems) -> {
       let decoders =
-        list.map(elems, fn(e) {
-          "(" <> param <> ") => " <> field_decoder_call_depth(e, param, next)
+        list.index_map(elems, fn(e, i) {
+          let elem_depth = next + i
+          let elem_param = "t" <> int.to_string(elem_depth)
+          "("
+          <> elem_param
+          <> ") => "
+          <> field_decoder_call_depth(e, elem_param, elem_depth + 1)
         })
       "decode_tuple_of(["
       <> string.join(decoders, ", ")
