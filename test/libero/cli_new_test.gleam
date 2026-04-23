@@ -1,3 +1,4 @@
+import gleam/option.{None}
 import gleam/string
 import libero/cli/new as cli_new
 import simplifile
@@ -6,7 +7,7 @@ pub fn scaffold_project_test() {
   let dir = "build/.test_cli_new/test_scaffold"
   let _ = simplifile.delete("build/.test_cli_new")
 
-  let assert Ok(Nil) = cli_new.scaffold(name: "my_app", path: dir)
+  let assert Ok(Nil) = cli_new.scaffold(name: "my_app", path: dir, database: None)
 
   let assert Ok(True) = simplifile.is_file(dir <> "/gleam.toml")
   let assert Ok(True) = simplifile.is_directory(dir <> "/src/server")

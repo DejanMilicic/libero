@@ -1,8 +1,10 @@
 //// `libero new` — scaffold a new Libero project at the given path.
 
 import gleam/list
+import gleam/option.{type Option}
 import gleam/result
 import gleam/string
+import libero/cli.{type Database}
 import libero/cli/templates
 import simplifile
 
@@ -14,7 +16,11 @@ import simplifile
 /// Creates the directory tree and writes starter source files so the
 /// project compiles and runs out of the box.
 /// nolint: stringly_typed_error -- CLI module, String errors are user-facing messages
-pub fn scaffold(name _name: String, path path: String) -> Result(Nil, String) {
+pub fn scaffold(
+  name _name: String,
+  path path: String,
+  database database: Option(Database),
+) -> Result(Nil, String) {
   let name =
     string.split(path, "/")
     |> list.last
@@ -22,7 +28,7 @@ pub fn scaffold(name _name: String, path path: String) -> Result(Nil, String) {
 
   case validate_name(name) {
     Error(msg) -> Error(msg)
-    Ok(Nil) -> scaffold_validated(name:, path:)
+    Ok(Nil) -> scaffold_validated(name:, path:, database:)
   }
 }
 
@@ -30,6 +36,7 @@ pub fn scaffold(name _name: String, path path: String) -> Result(Nil, String) {
 fn scaffold_validated(
   name name: String,
   path path: String,
+  database database: Option(Database),
 ) -> Result(Nil, String) {
   // Abort if the project already exists
   case simplifile.is_file(path <> "/gleam.toml") {
@@ -37,7 +44,7 @@ fn scaffold_validated(
       Error("project already exists at " <> path <> " (gleam.toml found)")
     _ -> {
       let server_dir = path <> "/src/server"
-      scaffold_files(name:, path:, server_dir:)
+      scaffold_files(name:, path:, server_dir:, database:)
     }
   }
 }
@@ -86,6 +93,7 @@ fn scaffold_files(
   name name: String,
   path path: String,
   server_dir server_dir: String,
+  database _database: Option(Database),
 ) -> Result(Nil, String) {
   use _ <- map_err(simplifile.create_directory_all(server_dir))
 
