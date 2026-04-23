@@ -782,10 +782,10 @@ fn field_decoder_call_depth(
   }
 }
 
+// nolint: thrown_away_error -- absence means no decoder needed
 /// Emit the `decode_msg_from_server` entry point function.
 /// Delegates to the per-type decoder to avoid duplicating the switch body.
 /// If no MsgFromServer type is found in the discovered list, returns "".
-// nolint: thrown_away_error -- absence means no decoder needed
 fn emit_msg_from_server_decoder(discovered: List(DiscoveredType)) -> String {
   case list.find(discovered, fn(t) { t.type_name == "MsgFromServer" }) {
     Error(_) -> ""
