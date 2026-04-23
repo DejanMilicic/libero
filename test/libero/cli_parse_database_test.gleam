@@ -17,7 +17,8 @@ pub fn parse_new_sqlite_test() {
 }
 
 pub fn parse_new_invalid_database_test() {
-  let assert cli.Unknown = cli.parse_args(["new", "my_app", "--database", "mongo"])
+  let assert cli.Unknown =
+    cli.parse_args(["new", "my_app", "--database", "mongo"])
 }
 
 pub fn parse_new_database_missing_value_test() {
