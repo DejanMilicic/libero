@@ -56,19 +56,41 @@ pub type TomlConfig {
 /// nolint: stringly_typed_error, error_context_lost -- config parsing; tom errors are opaque, string messages are more useful
 pub fn parse(input: String) -> Result(TomlConfig, String) {
   use parsed <- result.try(
-    tom.parse(input) |> result.map_error(fn(_) { "invalid TOML" }),
+    tom.parse(input)
+    |> result.map_error(fn(_) {
+      "error: Failed to parse gleam.toml
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} The file contains invalid TOML syntax
+  \u{2502}
+  hint: Run `gleam check` to validate your gleam.toml"
+    }),
   )
 
   use name <- result.try(
     tom.get_string(parsed, ["name"])
-    |> result.map_error(fn(_) { "missing required field: name" }),
+    |> result.map_error(fn(_) {
+      "error: Missing required field
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} The `name` field is required at the top level
+  \u{2502}
+  hint: Add: name = \"my_app\""
+    }),
   )
 
   // Reject legacy [libero] config (must be [tools.libero] since v4.1.1)
   use _ <- result.try(case tom.get_table(parsed, ["libero"]) {
     Ok(_) ->
       Error(
-        "Found [libero] section in gleam.toml. Since v4.1.1, libero config must be under [tools.libero]. Rename [libero] to [tools.libero] and [libero.clients.*] to [tools.libero.clients.*].",
+        "error: Legacy config section
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} Found [libero] section, but since v4.1.1 config must be
+  \u{2502} under [tools.libero]
+  \u{2502}
+  hint: Rename [libero] to [tools.libero]
+        Rename [libero.clients.*] to [tools.libero.clients.*]",
       )
     // nolint: thrown_away_error -- tom error means no legacy section, which is fine
     Error(_) -> Ok(Nil)
@@ -80,8 +102,12 @@ pub fn parse(input: String) -> Result(TomlConfig, String) {
     True -> Ok(raw_port)
     False ->
       Error(
-        "port must be between 1 and 65535, got: "
-        <> int.to_string(raw_port),
+        "error: Invalid port number
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} port = "
+        <> int.to_string(raw_port)
+        <> " is out of range (must be 1\u{2013}65535)",
       )
   })
 
@@ -143,7 +169,18 @@ pub fn to_codegen_config(
 ) -> Result(Config, String) {
   use client <- result.try(
     list.find(toml_cfg.clients, fn(c) { c.name == client_name })
-    |> result.map_error(fn(_) { "client not found: " <> client_name }),
+    |> result.map_error(fn(_) {
+      "error: Client not found
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} No client named `"
+      <> client_name
+      <> "` in [tools.libero.clients]
+  \u{2502}
+  hint: Add it with: gleam run -m libero -- add "
+      <> client_name
+      <> " --target javascript"
+    }),
   )
   let app = toml_cfg.name
   let client_generated = "clients/" <> client.name <> "/src/generated"
@@ -194,11 +231,27 @@ fn parse_clients(
       list.try_map(names, fn(name) {
         use client_table <- result.try(
           tom.get_table(clients_dict, [name])
-          |> result.map_error(fn(_) { "invalid clients." <> name <> " section" }),
+          |> result.map_error(fn(_) {
+            "error: Invalid client config
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} [tools.libero.clients."
+            <> name
+            <> "] is not a valid table"
+          }),
         )
         use target <- result.try(
           tom.get_string(client_table, ["target"])
-          |> result.map_error(fn(_) { "missing target in clients." <> name }),
+          |> result.map_error(fn(_) {
+            "error: Missing target
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} [tools.libero.clients."
+            <> name
+            <> "] is missing the `target` field
+  \u{2502}
+  hint: Add: target = \"javascript\""
+          }),
         )
         Ok(ClientConfig(name: name, target: target))
       })

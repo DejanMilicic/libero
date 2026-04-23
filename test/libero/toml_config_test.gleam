@@ -57,13 +57,15 @@ pub fn parse_no_tools_libero_section_test() {
 pub fn parse_missing_name_test() {
   let toml = "[tools.libero]\nport = 9090\n"
   let assert Error(msg) = toml_config.parse(toml)
-  let assert "missing required field: name" = msg
+  let assert True = string.contains(msg, "Missing required field")
+  let assert True = string.contains(msg, "name")
 }
 
 pub fn parse_rejects_legacy_libero_section_test() {
   let toml = "name = \"myapp\"\n\n[libero]\nport = 3000\n"
   let assert Error(msg) = toml_config.parse(toml)
-  let assert True = string.contains(msg, "must be under [tools.libero]")
+  let assert True = string.contains(msg, "Legacy config")
+  let assert True = string.contains(msg, "[tools.libero]")
 }
 
 pub fn to_codegen_config_javascript_client_test() {
@@ -102,6 +104,8 @@ pub fn to_codegen_config_missing_client_test() {
       shared_state_module: "server/shared_state",
       app_error_module: "server/app_error",
     )
-  let assert Error("client not found: web") =
+  let assert Error(msg) =
     toml_config.to_codegen_config(toml_cfg, client: "web", ws_path: "/ws")
+  let assert True = string.contains(msg, "Client not found")
+  let assert True = string.contains(msg, "web")
 }

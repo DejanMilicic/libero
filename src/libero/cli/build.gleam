@@ -23,7 +23,14 @@ pub fn run(project_path project_path: String) -> Result(Nil, String) {
   let exit_code = gleam_build(project_path)
   use _ <- try_ok(case exit_code {
     0 -> Ok(Nil)
-    _ -> Error("server build failed")
+    _ ->
+      Error(
+        "error: Server build failed
+  \u{2502}
+  \u{2502} `gleam build` exited with an error
+  \u{2502}
+  hint: Check the compiler output above for details",
+      )
   })
 
   // 3. Read config to find clients (re-parses gleam.toml; acceptable for CLI)
@@ -40,7 +47,17 @@ pub fn run(project_path project_path: String) -> Result(Nil, String) {
           let code = gleam_build(client_dir)
           case code {
             0 -> Ok(Nil)
-            _ -> Error("client " <> client.name <> " build failed")
+            _ ->
+              Error(
+                "error: Client build failed
+  \u{250c}\u{2500} clients/"
+                <> client.name
+                <> "/
+  \u{2502}
+  \u{2502} `gleam build` exited with an error
+  \u{2502}
+  hint: Check the compiler output above for details",
+              )
           }
         }
         _ -> {
@@ -80,7 +97,12 @@ fn try_read(
 ) -> Result(Nil, String) {
   case simplifile.read(path) {
     Ok(content) -> next(content)
-    Error(_) -> Error("cannot read " <> path)
+    Error(_) ->
+      Error(
+        "error: Cannot read file
+  \u{250c}\u{2500} "
+        <> path,
+      )
   }
 }
 

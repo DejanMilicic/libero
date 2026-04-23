@@ -17,7 +17,7 @@ pub fn main() -> Nil {
       case cli_new.scaffold(path: name, database:) {
         Ok(Nil) -> io.println("Created " <> name <> ". Happy hacking!")
         Error(reason) -> {
-          io.println_error("error: " <> reason)
+          io.println_error(reason)
           let _halt = halt(1)
           Nil
         }
@@ -29,7 +29,7 @@ pub fn main() -> Nil {
         Ok(Nil) ->
           io.println("Added client " <> name <> " (target: " <> target <> ")")
         Error(reason) -> {
-          io.println_error("error: " <> reason)
+          io.println_error(reason)
           let _halt = halt(1)
           Nil
         }
@@ -40,7 +40,7 @@ pub fn main() -> Nil {
       case cli_gen.run(project_path: ".") {
         Ok(Nil) -> Nil
         Error(msg) -> {
-          io.println_error("error: " <> msg)
+          io.println_error(msg)
           let _halt = halt(1)
           Nil
         }
@@ -50,7 +50,7 @@ pub fn main() -> Nil {
       case cli_build.run(project_path: ".") {
         Ok(Nil) -> Nil
         Error(msg) -> {
-          io.println_error("error: " <> msg)
+          io.println_error(msg)
           let _halt = halt(1)
           Nil
         }

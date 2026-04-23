@@ -20,55 +20,138 @@ pub type GenError {
 }
 
 pub fn print_error(err: GenError) -> Nil {
-  let message = case err {
+  io.println_error(to_string(err))
+}
+
+pub fn to_string(err: GenError) -> String {
+  case err {
     CannotReadDir(path, cause) ->
-      "cannot read directory: "
+      "error: Cannot read directory
+  \u{250c}\u{2500} "
       <> path
-      <> " ("
+      <> "
+  \u{2502}
+  \u{2502} "
       <> format_file_error(cause)
-      <> ")"
+
     CannotReadFile(path, cause) ->
-      "cannot read file: " <> path <> " (" <> format_file_error(cause) <> ")"
+      "error: Cannot read file
+  \u{250c}\u{2500} "
+      <> path
+      <> "
+  \u{2502}
+  \u{2502} "
+      <> format_file_error(cause)
+
     CannotWriteFile(path, cause) ->
-      "cannot write file: " <> path <> " (" <> format_file_error(cause) <> ")"
+      "error: Cannot write file
+  \u{250c}\u{2500} "
+      <> path
+      <> "
+  \u{2502}
+  \u{2502} "
+      <> format_file_error(cause)
+      <> "
+  \u{2502}
+  hint: Check that the directory exists and you have write permission"
+
     ParseFailed(path, _cause) ->
-      path <> ": failed to parse as Gleam source (glance.module error)"
+      "error: Failed to parse Gleam source
+  \u{250c}\u{2500} "
+      <> path
+      <> "
+  \u{2502}
+  \u{2502} glance could not parse this file as valid Gleam
+  \u{2502}
+  hint: Run `gleam check` to see the full compiler error"
+
     UnresolvedTypeModule(module_path, type_name) ->
-      "type `"
-      <> type_name
-      <> "` from module `"
+      "error: Unresolved type module
+  \u{250c}\u{2500} "
       <> module_path
-      <> "` could not be resolved to a file path"
-      <> "\n  ensure the module is in a path dep of the client package"
+      <> "
+  \u{2502}
+  \u{2502} Type `"
+      <> type_name
+      <> "` could not be resolved to a file path
+  \u{2502}
+  hint: Ensure the module is a path dependency of the client package.
+        Check that `"
+      <> module_path
+      <> "` appears in the shared/ directory
+        or is listed as a dependency in gleam.toml"
+
     TypeNotFound(module_path, type_name) ->
-      "type `"
+      "error: Type not found
+  \u{250c}\u{2500} "
+      <> module_path
+      <> ".gleam
+  \u{2502}
+  \u{2502} Type `"
       <> type_name
-      <> "` was not found in module `"
-      <> module_path
-      <> "`"
-      <> "\n  the type may be private, or the module path may be incorrect"
+      <> "` was not found in this module
+  \u{2502}
+  hint: The type may be private (add `pub`) or the module path may be
+        incorrect. Libero scans for custom types, not type aliases."
+
     MsgFromServerFieldCount(module_path, variant_name, field_count) ->
-      "MsgFromServer variant `"
-      <> variant_name
-      <> "` in `"
+      "error: Too many fields on MsgFromServer variant
+  \u{250c}\u{2500} "
       <> module_path
+      <> ".gleam
+  \u{2502}
+  \u{2502} `"
+      <> variant_name
       <> "` has "
       <> int.to_string(field_count)
-      <> " fields, expected 0 or 1"
-      <> "\n  dispatch unwraps the envelope with element(2, Tuple), which drops extra fields"
+      <> " fields, but MsgFromServer variants must have 0 or 1
+  \u{2502}
+  hint: Wrap multiple values in a single type:
+        pub type MsgFromServer {
+          "
+      <> variant_name
+      <> "(MyPayload)       \u{2190} one field
+        }
+        pub type MyPayload { MyPayload(field_a: Int, field_b: String) }"
+
     MissingHandler(message_module, expected) ->
-      "missing handler for message module `"
-      <> message_module
-      <> "`: expected "
+      "error: Missing handler module
+  \u{250c}\u{2500} "
       <> expected
-      <> "\n  create a server module exporting `pub fn update_from_client` with the correct type annotation"
+      <> ".gleam
+  \u{2502}
+  \u{2502} Message module `"
+      <> message_module
+      <> "` has MsgFromClient
+  \u{2502} but no handler was found at `"
+      <> expected
+      <> "`
+  \u{2502}
+  hint: Create the handler module:
+        // "
+      <> expected
+      <> ".gleam
+        pub fn update_from_client(
+          msg msg: MsgFromClient,
+          state state: SharedState,
+        ) -> Result(#(MsgFromServer, SharedState), AppError)"
+
     NoMessageModules(shared_path) ->
-      "no message modules found under `"
+      "error: No message modules found
+  \u{250c}\u{2500} "
       <> shared_path
-      <> "`"
-      <> "\n  create a shared module exporting a `MsgFromClient` or `MsgFromServer` type"
+      <> "/
+  \u{2502}
+  \u{2502} Libero scans this directory for types named
+  \u{2502} `MsgFromClient` or `MsgFromServer`, but found none
+  \u{2502}
+  hint: Create a shared message module:
+        // "
+      <> shared_path
+      <> "/messages.gleam
+        pub type MsgFromClient { Ping }
+        pub type MsgFromServer { Pong }"
   }
-  io.println_error("error: " <> message)
 }
 
 fn format_file_error(err: simplifile.FileError) -> String {

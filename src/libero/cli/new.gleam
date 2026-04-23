@@ -42,7 +42,14 @@ fn scaffold_validated(
   // Abort if the project already exists
   case simplifile.is_file(path <> "/gleam.toml") {
     Ok(True) ->
-      Error("project already exists at " <> path <> " (gleam.toml found)")
+      Error(
+        "error: Project already exists
+  \u{250c}\u{2500} "
+        <> path
+        <> "/gleam.toml
+  \u{2502}
+  \u{2502} A gleam.toml already exists at this path",
+      )
     _ -> {
       let server_dir = path <> "/src/server"
       scaffold_files(name:, path:, server_dir:, database:)
@@ -53,12 +60,27 @@ fn scaffold_validated(
 // nolint: stringly_typed_error
 fn validate_name(name: String) -> Result(Nil, String) {
   case string.to_graphemes(name) {
-    [] -> Error("project name cannot be empty")
+    [] ->
+      Error(
+        "error: Invalid project name
+  \u{2502}
+  \u{2502} Project name cannot be empty
+  \u{2502}
+  hint: gleam run -m libero -- new my_app",
+      )
     [first, ..rest] ->
       case is_lowercase_letter(first) {
         False ->
           Error(
-            "project name must start with a lowercase letter, got: " <> name,
+            "error: Invalid project name: `"
+            <> name
+            <> "`
+  \u{2502}
+  \u{2502} Must start with a lowercase letter (a-z)
+  \u{2502}
+  hint: Try `"
+            <> string.lowercase(name)
+            <> "` instead",
           )
         True ->
           case
@@ -68,8 +90,11 @@ fn validate_name(name: String) -> Result(Nil, String) {
           {
             False ->
               Error(
-                "project name must contain only lowercase letters, digits, and underscores, got: "
-                <> name,
+                "error: Invalid project name: `"
+                <> name
+                <> "`
+  \u{2502}
+  \u{2502} Must contain only lowercase letters, digits, and underscores",
               )
             True -> Ok(Nil)
           }

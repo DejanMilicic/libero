@@ -25,7 +25,14 @@ pub fn run(project_path project_path: String) -> Result(Nil, String) {
   use toml_content <- result.try(
     simplifile.read(project_path <> "/gleam.toml")
     |> result.map_error(fn(err) {
-      "cannot read gleam.toml: " <> simplifile.describe_error(err)
+      "error: Cannot read gleam.toml
+  \u{250c}\u{2500} gleam.toml
+  \u{2502}
+  \u{2502} "
+      <> simplifile.describe_error(err)
+      <> "
+  \u{2502}
+  hint: Run this command from your project root directory"
     }),
   )
 

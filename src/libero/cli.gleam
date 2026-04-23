@@ -34,21 +34,37 @@ pub fn parse_args(args: List(String)) -> Command {
         Ok(database) -> New(name:, database: Some(database))
         Error(Nil) -> {
           io.println_error(
-            "error: --database must be pg or sqlite, got: " <> db,
+            "error: Invalid database: `"
+            <> db
+            <> "`
+  \u{2502}
+  \u{2502} --database must be \"pg\" or \"sqlite\"
+  \u{2502}
+  hint: gleam run -m libero -- new my_app --database pg",
           )
           Unknown
         }
       }
     ["new", _name, "--database"] -> {
-      io.println_error("error: --database requires a value (pg or sqlite)")
+      io.println_error(
+        "error: Missing database value
+  \u{2502}
+  \u{2502} --database requires a value
+  \u{2502}
+  hint: gleam run -m libero -- new my_app --database pg
+        gleam run -m libero -- new my_app --database sqlite",
+      )
       Unknown
     }
     ["new", name, ..] -> New(name:, database: None)
     ["add", name, "--target", target, ..] -> Add(name:, target:)
     ["add", _name, ..] -> {
-      io.println_error("error: --target is required")
       io.println_error(
-        "  Usage: gleam run -m libero -- add <name> --target <javascript|erlang>",
+        "error: Missing --target flag
+  \u{2502}
+  \u{2502} The add command requires a target
+  \u{2502}
+  hint: gleam run -m libero -- add <name> --target javascript",
       )
       Unknown
     }

@@ -248,9 +248,13 @@ pub fn check_segment_collisions(
     [] -> Ok(Nil)
     _ ->
       Error(
-        "segment collision: "
-        <> string.join(list.reverse(collisions), "; ")
-        <> " — rename one of the modules to avoid overwriting",
+        "error: Module name collision
+  \u{2502}
+  \u{2502} "
+        <> string.join(list.reverse(collisions), "\n  \u{2502} ")
+        <> "
+  \u{2502}
+  hint: Rename one of the modules so they produce different output filenames",
       )
   }
 }

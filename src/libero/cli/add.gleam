@@ -76,12 +76,27 @@ fn validate_name(
   next: fn(Nil) -> Result(Nil, String),
 ) -> Result(Nil, String) {
   case string.to_graphemes(name) {
-    [] -> Error("client name cannot be empty")
+    [] ->
+      Error(
+        "error: Invalid client name
+  \u{2502}
+  \u{2502} Client name cannot be empty
+  \u{2502}
+  hint: gleam run -m libero -- add my_client --target javascript",
+      )
     [first, ..rest] ->
       case is_lowercase_letter(first) {
         False ->
           Error(
-            "client name must start with a lowercase letter, got: " <> name,
+            "error: Invalid client name: `"
+            <> name
+            <> "`
+  \u{2502}
+  \u{2502} Must start with a lowercase letter (a-z)
+  \u{2502}
+  hint: Try `"
+            <> string.lowercase(name)
+            <> "` instead",
           )
         True ->
           case
@@ -91,8 +106,11 @@ fn validate_name(
           {
             False ->
               Error(
-                "client name must contain only lowercase letters, digits, and underscores, got: "
-                <> name,
+                "error: Invalid client name: `"
+                <> name
+                <> "`
+  \u{2502}
+  \u{2502} Must contain only lowercase letters, digits, and underscores",
               )
             True -> next(Nil)
           }
@@ -121,7 +139,13 @@ fn validate_target(
     "javascript" | "erlang" -> next(Nil)
     _ ->
       Error(
-        "target must be \"javascript\" or \"erlang\", got: \"" <> target <> "\"",
+        "error: Invalid target: `"
+        <> target
+        <> "`
+  \u{2502}
+  \u{2502} Target must be \"javascript\" or \"erlang\"
+  \u{2502}
+  hint: gleam run -m libero -- add <name> --target javascript",
       )
   }
 }
