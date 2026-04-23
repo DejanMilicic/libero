@@ -5,7 +5,13 @@
 
 /// Returns gleam.toml content for a new project (the server package).
 /// Libero config lives under the [tools.libero] section.
-pub fn gleam_toml(name name: String) -> String {
+/// `db_deps` is inserted after the existing deps (e.g. pog, sqlight lines).
+/// `extra_toml` is appended after the [tools.libero] section (e.g. [tools.marmot]).
+pub fn gleam_toml(
+  name name: String,
+  db_deps db_deps: String,
+  extra_toml extra_toml: String,
+) -> String {
   "name = \"" <> name <> "\"
 version = \"0.1.0\"
 target = \"erlang\"
@@ -18,13 +24,13 @@ mist = \"~> 6.0\"
 lustre = \"~> 5.6\"
 shared = { path = \"shared\" }
 libero = \"~> 4.2\"
-
+" <> db_deps <> "
 [dev-dependencies]
 gleeunit = \"~> 1.0\"
 
 [tools.libero]
 port = 8080
-"
+" <> extra_toml
 }
 
 /// Returns gleam.toml content for the shared package.

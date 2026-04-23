@@ -100,7 +100,7 @@ fn scaffold_files(
   // Root (server) package
   use _ <- map_err(simplifile.write(
     path <> "/gleam.toml",
-    templates.gleam_toml(name:),
+    templates.gleam_toml(name:, db_deps: "", extra_toml: ""),
   ))
   use _ <- map_err(simplifile.write(
     server_dir <> "/handler.gleam",
