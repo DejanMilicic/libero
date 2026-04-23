@@ -178,3 +178,63 @@ pub fn main() -> Nil {
 }
 "
 }
+
+/// Returns a README.md for a new project.
+/// `db_section` is optional database-specific content appended to the end.
+pub fn starter_readme(
+  name name: String,
+  db_section db_section: String,
+) -> String {
+  "# " <> name <> "
+
+A Libero project.
+
+## Getting started
+
+Build the generated client and server code, then start the server:
+
+```sh
+gleam run -m libero -- build
+gleam run
+```
+
+The server starts on the port configured in `gleam.toml` under
+`[tools.libero]` (default 8080).
+
+## Project structure
+
+```
+src/server/         Server-side Gleam code (handlers, shared state, etc.)
+shared/             Types shared between server and clients (messages, models)
+clients/            Client packages (SPA, CLI, etc.)
+test/               Tests
+```
+
+## Commands
+
+- `gleam run -m libero -- build` generates dispatch, client stubs, and
+  other derived code from your message types.
+- `gleam run -m libero -- gen` regenerates only the derived code without
+  rebuilding everything.
+- `gleam run -m libero -- add <name> --target <javascript|erlang>` adds
+  a new client package.
+- `gleam test` runs the test suite.
+
+## How it works
+
+Define your message types in `shared/src/shared/messages.gleam`. The
+`MsgFromClient` type lists every request the client can send; the
+`MsgFromServer` type lists every response the server can return.
+
+When you run `libero build`, it reads those types and generates:
+
+- A dispatch module that routes incoming messages to your handler.
+- Client stub functions so each client package can call the server
+  with typed arguments.
+
+Your handler in `src/server/handler.gleam` pattern-matches on
+`MsgFromClient` variants and returns `MsgFromServer` values. Shared
+state (database connections, caches, etc.) is threaded through
+`SharedState` so every handler call has access to it.
+" <> db_section
+}
